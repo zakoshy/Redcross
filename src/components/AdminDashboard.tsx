@@ -1,0 +1,784 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
+import { Profile, UserRole, Campaign, TriageSession, LedgerEntry } from '../types';
+import { KENYAN_COUNTIES } from '../constants';
+import { 
+  Shield, UserPlus, Users, Store, LogOut, PlusCircle, Megaphone, 
+  Send, CheckCircle2, Wallet, LayoutDashboard, MessageSquareWarning, 
+  TrendingUp, Activity, AlertTriangle, UserCheck, Search, Filter,
+  Eye, EyeOff, Trash2, Edit, Save, X, Phone as PhoneIcon
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+type Tab = 'analytics' | 'users' | 'campaigns' | 'triage';
+
+export default function AdminDashboard() {
+  const { signOut, user } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('analytics');
+  
+  // Data State
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [volunteers, setVolunteers] = useState<Profile[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [triageSessions, setTriageSessions] = useState<TriageSession[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Form States
+  const [newUser, setNewUser] = useState({
+    email: '', password: '', fullName: '', nationalId: '', phone: '+254', county: '', role: 'volunteer' as UserRole
+  });
+  const [newCampaign, setNewCampaign] = useState({ name: '', description: '', amount: 5000 });
+  const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
+  const [editCampaignData, setEditCampaignData] = useState({ name: '', description: '', amount_per_victim: 0 });
+  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+  useEffect(() => {
+    fetchData();
+    
+    // Set up real-time subscription for triage sessions
+    const triageSubscription = supabase
+      .channel('triage_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'triage_sessions' }, () => {
+        fetchTriage();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(triageSubscription);
+    };
+  }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    await Promise.all([
+      fetchProfiles(),
+      fetchCampaigns(),
+      fetchTriage(),
+      fetchLedger()
+    ]);
+    setLoading(false);
+  }
+
+  async function fetchProfiles() {
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (data) {
+      setProfiles(data);
+      setVolunteers(data.filter(p => p.role === 'volunteer'));
+    }
+  }
+
+  async function fetchCampaigns() {
+    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
+    if (data) setCampaigns(data);
+  }
+
+  async function fetchTriage() {
+    const { data } = await supabase.from('triage_sessions').select('*').order('risk_score', { ascending: false });
+    if (data) setTriageSessions(data);
+  }
+
+  async function fetchLedger() {
+    const { data } = await supabase.from('ledger').select('*').order('created_at', { ascending: false });
+    if (data) setLedger(data);
+  }
+
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus(null);
+    const { error } = await supabase.auth.signUp({
+      email: newUser.email,
+      password: newUser.password,
+      options: {
+        data: { 
+          role: newUser.role,
+          full_name: newUser.fullName,
+          national_id: newUser.nationalId,
+          phone_number: newUser.phone,
+          county: newUser.county
+        }
+      }
+    });
+
+    if (error) {
+      setStatus({ type: 'error', message: error.message });
+    } else {
+      setStatus({ type: 'success', message: `Account created for ${newUser.email}` });
+      setNewUser({ email: '', password: '', fullName: '', nationalId: '', phone: '+254', county: '', role: 'volunteer' });
+      fetchProfiles();
+    }
+  }
+
+  async function handleCreateCampaign(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus(null);
+    const { error } = await supabase.from('campaigns').insert({
+      name: newCampaign.name,
+      description: newCampaign.description,
+      amount_per_victim: newCampaign.amount
+    });
+
+    if (error) {
+      setStatus({ type: 'error', message: error.message });
+    } else {
+      setStatus({ type: 'success', message: 'Campaign created successfully!' });
+      setNewCampaign({ name: '', description: '', amount: 5000 });
+      fetchCampaigns();
+    }
+  }
+
+  async function handleDeleteCampaign(id: string) {
+    if (!confirm('Are you sure you want to delete this campaign?')) return;
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) setStatus({ type: 'error', message: error.message });
+    else fetchCampaigns();
+  }
+
+  async function handleUpdateCampaign(id: string) {
+    const { error } = await supabase.from('campaigns').update({
+      name: editCampaignData.name,
+      description: editCampaignData.description,
+      amount_per_victim: editCampaignData.amount_per_victim
+    }).eq('id', id);
+
+    if (error) {
+      setStatus({ type: 'error', message: error.message });
+    } else {
+      setEditingCampaign(null);
+      fetchCampaigns();
+    }
+  }
+
+  async function sendVoucherSMS(profile: Profile, campaign: Campaign) {
+    if (!profile.phone_number) {
+      setStatus({ type: 'error', message: 'User has no phone number' });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: profile.phone_number,
+          message: `Hello ${profile.full_name}, your voucher for ${campaign.name} is ready. Dial *384*1234# to redeem KES ${campaign.amount_per_victim}.`
+        })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setStatus({ type: 'success', message: `SMS sent to ${profile.full_name}` });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: `Failed to send SMS: ${String(error)}` });
+    }
+  }
+
+  async function handleDisburse(campaignId: string, amount: number) {
+    setStatus(null);
+    const victims = profiles.filter(p => p.role === 'victim');
+    if (victims.length === 0) {
+      setStatus({ type: 'error', message: 'No victims found to disburse to.' });
+      return;
+    }
+
+    const { error } = await supabase.rpc('disburse_aid', {
+      victim_profile_ids: victims.map(v => v.id),
+      disbursement_amount: amount,
+      p_campaign_id: campaignId,
+      idempotency_key_prefix: `disburse-${campaignId}-${Date.now()}-`
+    });
+
+    if (error) setStatus({ type: 'error', message: error.message });
+    else setStatus({ type: 'success', message: `Disbursement of KES ${amount.toLocaleString()} triggered for ${victims.length} victims!` });
+  }
+
+  async function assignVolunteer(sessionId: number, volunteerId: string) {
+    const { error } = await supabase
+      .from('triage_sessions')
+      .update({ volunteer_id: volunteerId, status: 'in_progress' })
+      .eq('id', sessionId);
+
+    if (error) setStatus({ type: 'error', message: error.message });
+    else {
+      setStatus({ type: 'success', message: 'Volunteer assigned successfully' });
+      fetchTriage();
+    }
+  }
+
+  const stats = {
+    totalAid: ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT').reduce((acc, l) => acc + Math.abs(l.amount), 0),
+    totalPurchases: ledger.filter(l => l.transaction_type === 'PURCHASE').reduce((acc, l) => acc + Math.abs(l.amount), 0) / 2, // Divided by 2 because purchase has 2 entries (debit/credit)
+    activeVictims: profiles.filter(p => p.role === 'victim').length,
+    highRiskCases: triageSessions.filter(s => s.risk_score > 0.7 && s.status === 'open').length
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col sticky top-0 h-screen">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-100">
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-200">
+            <Shield className="text-white" size={24} />
+          </div>
+          <span className="font-black text-slate-900 tracking-tight text-lg">ReliefAdmin</span>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2">
+          <SidebarLink 
+            icon={<LayoutDashboard size={20} />} 
+            label="Analytics" 
+            active={activeTab === 'analytics'} 
+            onClick={() => setActiveTab('analytics')} 
+          />
+          <SidebarLink 
+            icon={<Users size={20} />} 
+            label="User Management" 
+            active={activeTab === 'users'} 
+            onClick={() => setActiveTab('users')} 
+          />
+          <SidebarLink 
+            icon={<Megaphone size={20} />} 
+            label="Campaigns" 
+            active={activeTab === 'campaigns'} 
+            onClick={() => setActiveTab('campaigns')} 
+          />
+          <SidebarLink 
+            icon={<MessageSquareWarning size={20} />} 
+            label="PFA Triage" 
+            active={activeTab === 'triage'} 
+            badge={stats.highRiskCases > 0 ? stats.highRiskCases : undefined}
+            onClick={() => setActiveTab('triage')} 
+          />
+        </nav>
+
+        <div className="p-4 border-t border-slate-100">
+          <button 
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-bold"
+          >
+            <LogOut size={20} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        <header className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 capitalize">{activeTab.replace('-', ' ')}</h2>
+            <p className="text-slate-500 font-medium">System overview and management</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-sm font-bold text-slate-700">System Live</span>
+            </div>
+          </div>
+        </header>
+
+        {status && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-6 p-4 rounded-2xl text-sm font-bold flex items-center gap-3 border ${
+              status.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+            }`}
+          >
+            {status.type === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+            {status.message}
+          </motion.div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {activeTab === 'analytics' && (
+            <motion.div 
+              key="analytics"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard icon={<TrendingUp className="text-blue-600" />} label="Total Aid Disbursed" value={`$${stats.totalAid.toLocaleString()}`} color="blue" />
+                <StatCard icon={<Activity className="text-green-600" />} label="Merchant Volume" value={`$${stats.totalPurchases.toLocaleString()}`} color="green" />
+                <StatCard icon={<Users className="text-purple-600" />} label="Active Victims" value={stats.activeVictims} color="purple" />
+                <StatCard icon={<AlertTriangle className="text-red-600" />} label="High Risk Cases" value={stats.highRiskCases} color="red" />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                    <TrendingUp size={20} className="text-slate-400" />
+                    Recent Activity
+                  </h3>
+                  <div className="space-y-4">
+                    {ledger.slice(0, 5).map((entry) => (
+                      <div key={entry.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            entry.transaction_type === 'AID_DISBURSEMENT' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            {entry.transaction_type === 'AID_DISBURSEMENT' ? <PlusCircle size={18} /> : <Store size={18} />}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm">{entry.description}</p>
+                            <p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <span className={`font-black ${entry.amount > 0 ? 'text-green-600' : 'text-slate-900'}`}>
+                          {entry.amount > 0 ? '+' : ''}{entry.amount}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                    <Users size={20} className="text-slate-400" />
+                    User Distribution
+                  </h3>
+                  <div className="space-y-6">
+                    <DistributionBar label="Victims" count={profiles.filter(p => p.role === 'victim').length} total={profiles.length} color="bg-red-500" />
+                    <DistributionBar label="Volunteers" count={profiles.filter(p => p.role === 'volunteer').length} total={profiles.length} color="bg-blue-500" />
+                    <DistributionBar label="Merchants" count={profiles.filter(p => p.role === 'merchant').length} total={profiles.length} color="bg-green-500" />
+                    <DistributionBar label="Admins" count={profiles.filter(p => p.role === 'admin').length} total={profiles.length} color="bg-purple-500" />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'users' && (
+            <motion.div 
+              key="users"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+            >
+              <div className="lg:col-span-1">
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm sticky top-8">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                    <UserPlus size={20} className="text-red-600" />
+                    Register New User
+                  </h3>
+                  <form onSubmit={handleCreateUser} className="space-y-4">
+                    <Input label="Full Name" value={newUser.fullName} onChange={v => setNewUser({...newUser, fullName: v})} required />
+                    <Input label="Email" type="email" value={newUser.email} onChange={v => setNewUser({...newUser, email: v})} required />
+                    <Input label="Password" type="password" value={newUser.password} onChange={v => setNewUser({...newUser, password: v})} required />
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input label="National ID" value={newUser.nationalId} onChange={v => setNewUser({...newUser, nationalId: v})} />
+                      <Input label="Phone (+254...)" value={newUser.phone} onChange={v => {
+                        if (v.startsWith('+254') || v === '') setNewUser({...newUser, phone: v});
+                        else if (v.startsWith('254')) setNewUser({...newUser, phone: '+' + v});
+                        else if (v.length > 0 && !v.startsWith('+')) setNewUser({...newUser, phone: '+254' + v.replace(/^0/, '')});
+                        else setNewUser({...newUser, phone: v});
+                      }} />
+                    </div>
+                    <Input 
+                      label="County" 
+                      value={newUser.county} 
+                      onChange={v => setNewUser({...newUser, county: v})} 
+                      placeholder="Type or select county..." 
+                      list="kenyan-counties"
+                    />
+                    <datalist id="kenyan-counties">
+                      {KENYAN_COUNTIES.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Role</label>
+                      <select 
+                        value={newUser.role}
+                        onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold"
+                      >
+                        <option value="volunteer">Volunteer</option>
+                        <option value="merchant">Merchant</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <button type="submit" className="w-full bg-red-600 text-white font-black py-4 rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200">
+                      Create Account
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="text-lg font-bold">System Users</h3>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input type="text" placeholder="Search users..." className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500" />
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">User</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Role</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Contact</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {profiles.map(p => (
+                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500">
+                                  {p.full_name?.[0] || p.email?.[0]}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-slate-900">{p.full_name || 'Unnamed'}</p>
+                                  <p className="text-xs text-slate-500">{p.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
+                                p.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                p.role === 'volunteer' ? 'bg-blue-100 text-blue-700' :
+                                p.role === 'merchant' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {p.role}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm font-bold text-slate-600">
+                              {p.county || 'N/A'}
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-sm font-medium text-slate-600">{p.phone_number || 'No phone'}</p>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'campaigns' && (
+            <motion.div 
+              key="campaigns"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <Megaphone size={24} className="text-red-600" />
+                  Launch New Relief Campaign
+                </h3>
+                <form onSubmit={handleCreateCampaign} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                  <div className="md:col-span-1">
+                    <Input label="Campaign Name" value={newCampaign.name} onChange={v => setNewCampaign({...newCampaign, name: v})} required placeholder="e.g. Flood Relief 2026" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Input label="Description" value={newCampaign.description} onChange={v => setNewCampaign({...newCampaign, description: v})} placeholder="Brief overview" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Input label="Amount per Victim (KES)" type="number" value={newCampaign.amount.toString()} onChange={v => setNewCampaign({...newCampaign, amount: parseFloat(v) || 0})} placeholder="e.g. 5000" />
+                  </div>
+                  <button type="submit" className="bg-red-600 text-white font-black py-4 rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2">
+                    <PlusCircle size={20} />
+                    Create Campaign
+                  </button>
+                </form>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {campaigns.map(c => (
+                  <div key={c.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-red-200 transition-all group">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-start">
+                      <div className="flex-1">
+                        {editingCampaign === c.id ? (
+                          <div className="space-y-4">
+                            <Input label="Name" value={editCampaignData.name} onChange={v => setEditCampaignData({...editCampaignData, name: v})} />
+                            <Input label="Description" value={editCampaignData.description} onChange={v => setEditCampaignData({...editCampaignData, description: v})} />
+                            <Input label="Amount (KES)" type="number" value={editCampaignData.amount_per_victim.toString()} onChange={v => setEditCampaignData({...editCampaignData, amount_per_victim: parseFloat(v) || 0})} />
+                            <div className="flex gap-2">
+                              <button onClick={() => handleUpdateCampaign(c.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2">
+                                <Save size={16} /> Save
+                              </button>
+                              <button onClick={() => setEditingCampaign(null)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-bold flex items-center justify-center gap-2">
+                                <X size={16} /> Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <h4 className="text-xl font-black text-slate-900 mb-1">{c.name}</h4>
+                            <p className="text-slate-500 text-sm font-medium">{c.description || 'No description provided'}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
+                          c.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {c.status}
+                        </span>
+                        {!editingCampaign && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => {
+                                setEditingCampaign(c.id);
+                                setEditCampaignData({ name: c.name, description: c.description, amount_per_victim: c.amount_per_victim });
+                              }}
+                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteCampaign(c.id)}
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-6 bg-slate-50 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Per Victim</p>
+                          <p className="text-lg font-black text-slate-900">KES {c.amount_per_victim.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleDisburse(c.id, c.amount_per_victim)}
+                          className="bg-slate-900 text-white px-4 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center gap-2"
+                        >
+                          <Send size={16} />
+                          Disburse
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const victims = profiles.filter(p => p.role === 'victim');
+                            victims.forEach(v => sendVoucherSMS(v, c));
+                          }}
+                          className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black hover:bg-blue-700 transition-all flex items-center gap-2"
+                        >
+                          <PhoneIcon size={16} />
+                          Notify
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'triage' && (
+            <motion.div 
+              key="triage"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-bold">PFA Chatbot Triage</h3>
+                    <p className="text-sm text-slate-500 font-medium">Victims ranked by danger/risk level</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Filter size={18} className="text-slate-400" />
+                    <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-sm font-bold outline-none">
+                      <option>All Status</option>
+                      <option>Open</option>
+                      <option>In Progress</option>
+                      <option>Closed</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Victim</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Risk Score</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Last Message</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Assignment</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {triageSessions.map(session => {
+                        const victim = profiles.find(p => p.id === session.victim_id);
+                        const assignedVolunteer = volunteers.find(v => v.id === session.volunteer_id);
+                        
+                        return (
+                          <tr key={session.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <p className="font-bold text-slate-900">{victim?.full_name || 'Unknown Victim'}</p>
+                              <p className="text-xs text-slate-500">{victim?.phone_number || 'No contact'}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-24">
+                                  <div 
+                                    className={`h-full rounded-full ${
+                                      session.risk_score > 0.7 ? 'bg-red-500' : 
+                                      session.risk_score > 0.4 ? 'bg-orange-500' : 'bg-green-500'
+                                    }`}
+                                    style={{ width: `${session.risk_score * 100}%` }}
+                                  />
+                                </div>
+                                <span className={`text-xs font-black ${
+                                  session.risk_score > 0.7 ? 'text-red-600' : 
+                                  session.risk_score > 0.4 ? 'text-orange-600' : 'text-green-600'
+                                }`}>
+                                  {(session.risk_score * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-sm text-slate-600 max-w-xs truncate italic">"{session.last_message}"</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              {session.volunteer_id ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600">
+                                    {assignedVolunteer?.full_name?.[0]}
+                                  </div>
+                                  <span className="text-sm font-bold text-slate-700">{assignedVolunteer?.full_name}</span>
+                                </div>
+                              ) : (
+                                <select 
+                                  onChange={(e) => assignVolunteer(session.id, e.target.value)}
+                                  className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-red-500"
+                                >
+                                  <option value="">Assign Volunteer</option>
+                                  {volunteers.map(v => (
+                                    <option key={v.id} value={v.id}>{v.full_name}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                session.status === 'open' ? 'bg-red-100 text-red-700' :
+                                session.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                              }`}>
+                                {session.status.replace('_', ' ')}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}
+
+function SidebarLink({ icon, label, active, onClick, badge }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void, badge?: number }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-bold group ${
+        active ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {icon}
+        <span>{label}</span>
+      </div>
+      {badge && (
+        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+          active ? 'bg-white text-red-600' : 'bg-red-600 text-white'
+        }`}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: string | number, color: 'blue' | 'green' | 'purple' | 'red' }) {
+  const colors = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    purple: 'bg-purple-50 text-purple-600',
+    red: 'bg-red-50 text-red-600'
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${colors[color]}`}>
+        {icon}
+      </div>
+      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-2xl font-black text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function DistributionBar({ label, count, total, color }: { label: string, count: number, total: number, color: string }) {
+  const percentage = total > 0 ? (count / total) * 100 : 0;
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-xs font-bold">
+        <span className="text-slate-600">{label}</span>
+        <span className="text-slate-400">{count} ({percentage.toFixed(0)}%)</span>
+      </div>
+      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${percentage}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, type = 'text', required = false, placeholder = '', list }: { label: string, value: string, onChange: (v: string) => void, type?: string, required?: boolean, placeholder?: string, list?: string }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
+  return (
+    <div>
+      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">{label}</label>
+      <div className="relative">
+        <input 
+          type={inputType}
+          required={required}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          list={list}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-slate-900 placeholder:text-slate-300 transition-all pr-12"
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
