@@ -8,6 +8,7 @@ export interface Profile {
   national_id?: string;
   phone_number?: string;
   county?: string;
+  status: 'pending' | 'active' | 'suspended';
   created_at: string;
 }
 

@@ -16,6 +16,7 @@ type Tab = 'analytics' | 'users' | 'campaigns' | 'triage';
 export default function AdminDashboard() {
   const { signOut, user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('analytics');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Data State
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -33,6 +34,10 @@ export default function AdminDashboard() {
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const [editCampaignData, setEditCampaignData] = useState({ name: '', description: '', amount_per_victim: 0 });
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     fetchData();
@@ -104,7 +109,10 @@ export default function AdminDashboard() {
     if (error) {
       setStatus({ type: 'error', message: error.message });
     } else {
-      setStatus({ type: 'success', message: `Account created for ${newUser.email}` });
+      setStatus({ 
+        type: 'success', 
+        message: `Account created for ${newUser.email}. Please ask them to check their email for activation.` 
+      });
       setNewUser({ email: '', password: '', fullName: '', nationalId: '', phone: '+254', county: '', role: 'volunteer' });
       fetchProfiles();
     }
@@ -215,42 +223,67 @@ export default function AdminDashboard() {
     highRiskCases: triageSessions.filter(s => s.risk_score > 0.7 && s.status === 'open').length
   };
 
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProfiles = profiles.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(profiles.length / itemsPerPage);
+
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-200">
+            <Shield className="text-white" size={18} />
+          </div>
+          <span className="font-black text-slate-900 tracking-tight">ReliefAdmin</span>
+        </div>
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+        >
+          {isSidebarOpen ? <X size={24} /> : <LayoutDashboard size={24} />}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col sticky top-0 h-screen">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-100">
+      <aside className={`
+        fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-screen
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="p-6 hidden lg:flex items-center gap-3 border-b border-slate-100 flex-shrink-0">
           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-200">
             <Shield className="text-white" size={24} />
           </div>
           <span className="font-black text-slate-900 tracking-tight text-lg">ReliefAdmin</span>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
           <SidebarLink 
             icon={<LayoutDashboard size={20} />} 
             label="Analytics" 
             active={activeTab === 'analytics'} 
-            onClick={() => setActiveTab('analytics')} 
+            onClick={() => { setActiveTab('analytics'); setIsSidebarOpen(false); }} 
           />
           <SidebarLink 
             icon={<Users size={20} />} 
             label="User Management" 
             active={activeTab === 'users'} 
-            onClick={() => setActiveTab('users')} 
+            onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }} 
           />
           <SidebarLink 
             icon={<Megaphone size={20} />} 
             label="Campaigns" 
             active={activeTab === 'campaigns'} 
-            onClick={() => setActiveTab('campaigns')} 
+            onClick={() => { setActiveTab('campaigns'); setIsSidebarOpen(false); }} 
           />
           <SidebarLink 
             icon={<MessageSquareWarning size={20} />} 
             label="PFA Triage" 
             active={activeTab === 'triage'} 
             badge={stats.highRiskCases > 0 ? stats.highRiskCases : undefined}
-            onClick={() => setActiveTab('triage')} 
+            onClick={() => { setActiveTab('triage'); setIsSidebarOpen(false); }} 
           />
         </nav>
 
@@ -265,15 +298,23 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
+      {/* Overlay for mobile sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 capitalize">{activeTab.replace('-', ' ')}</h2>
-            <p className="text-slate-500 font-medium">System overview and management</p>
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 capitalize">{activeTab.replace('-', ' ')}</h2>
+            <p className="text-slate-500 font-medium text-sm md:text-base">System overview and management</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 flex items-center gap-2">
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 flex items-center gap-2 flex-1 sm:flex-initial justify-center">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
               <span className="text-sm font-bold text-slate-700">System Live</span>
             </div>
@@ -303,8 +344,8 @@ export default function AdminDashboard() {
               className="space-y-8"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard icon={<TrendingUp className="text-blue-600" />} label="Total Aid Disbursed" value={`$${stats.totalAid.toLocaleString()}`} color="blue" />
-                <StatCard icon={<Activity className="text-green-600" />} label="Merchant Volume" value={`$${stats.totalPurchases.toLocaleString()}`} color="green" />
+                <StatCard icon={<TrendingUp className="text-blue-600" />} label="Total Aid Disbursed" value={`KES ${(stats.totalAid || 0).toLocaleString()}`} color="blue" />
+                <StatCard icon={<Activity className="text-green-600" />} label="Merchant Volume" value={`KES ${(stats.totalPurchases || 0).toLocaleString()}`} color="green" />
                 <StatCard icon={<Users className="text-purple-600" />} label="Active Victims" value={stats.activeVictims} color="purple" />
                 <StatCard icon={<AlertTriangle className="text-red-600" />} label="High Risk Cases" value={stats.highRiskCases} color="red" />
               </div>
@@ -424,12 +465,13 @@ export default function AdminDashboard() {
                         <tr>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">User</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Role</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Contact</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {profiles.map(p => (
+                        {currentProfiles.map(p => (
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
@@ -451,6 +493,18 @@ export default function AdminDashboard() {
                                 {p.role}
                               </span>
                             </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-1 w-fit ${
+                                p.status === 'active' ? 'bg-green-100 text-green-700' :
+                                p.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${
+                                  p.status === 'active' ? 'bg-green-500' :
+                                  p.status === 'pending' ? 'bg-amber-500' : 'bg-red-500'
+                                }`} />
+                                {p.status === 'pending' ? 'Inactive' : p.status}
+                              </span>
+                            </td>
                             <td className="px-6 py-4 text-sm font-bold text-slate-600">
                               {p.county || 'N/A'}
                             </td>
@@ -462,6 +516,44 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                  
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                      <p className="text-sm font-medium text-slate-500">
+                        Showing <span className="text-slate-900">{indexOfFirstItem + 1}</span> to <span className="text-slate-900">{Math.min(indexOfLastItem, profiles.length)}</span> of <span className="text-slate-900">{profiles.length}</span> users
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(prev => prev - 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Previous
+                        </button>
+                        {[...Array(totalPages)].map((_, i) => (
+                          <button
+                            key={i + 1}
+                            onClick={() => setCurrentPage(i + 1)}
+                            className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
+                              currentPage === i + 1 
+                                ? 'bg-red-600 text-white shadow-lg shadow-red-200' 
+                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                        <button 
+                          disabled={currentPage === totalPages}
+                          onClick={() => setCurrentPage(prev => prev + 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -480,17 +572,17 @@ export default function AdminDashboard() {
                   <Megaphone size={24} className="text-red-600" />
                   Launch New Relief Campaign
                 </h3>
-                <form onSubmit={handleCreateCampaign} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                  <div className="md:col-span-1">
+                <form onSubmit={handleCreateCampaign} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 items-end">
+                  <div className="sm:col-span-1">
                     <Input label="Campaign Name" value={newCampaign.name} onChange={v => setNewCampaign({...newCampaign, name: v})} required placeholder="e.g. Flood Relief 2026" />
                   </div>
-                  <div className="md:col-span-1">
+                  <div className="sm:col-span-1">
                     <Input label="Description" value={newCampaign.description} onChange={v => setNewCampaign({...newCampaign, description: v})} placeholder="Brief overview" />
                   </div>
-                  <div className="md:col-span-1">
+                  <div className="sm:col-span-1">
                     <Input label="Amount per Victim (KES)" type="number" value={newCampaign.amount.toString()} onChange={v => setNewCampaign({...newCampaign, amount: parseFloat(v) || 0})} placeholder="e.g. 5000" />
                   </div>
-                  <button type="submit" className="bg-red-600 text-white font-black py-4 rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2">
+                  <button type="submit" className="bg-red-600 text-white font-black py-4 rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2 sm:col-span-1">
                     <PlusCircle size={20} />
                     Create Campaign
                   </button>
@@ -506,7 +598,7 @@ export default function AdminDashboard() {
                           <div className="space-y-4">
                             <Input label="Name" value={editCampaignData.name} onChange={v => setEditCampaignData({...editCampaignData, name: v})} />
                             <Input label="Description" value={editCampaignData.description} onChange={v => setEditCampaignData({...editCampaignData, description: v})} />
-                            <Input label="Amount (KES)" type="number" value={editCampaignData.amount_per_victim.toString()} onChange={v => setEditCampaignData({...editCampaignData, amount_per_victim: parseFloat(v) || 0})} />
+                            <Input label="Amount (KES)" type="number" value={(editCampaignData.amount_per_victim || 0).toString()} onChange={v => setEditCampaignData({...editCampaignData, amount_per_victim: parseFloat(v) || 0})} />
                             <div className="flex gap-2">
                               <button onClick={() => handleUpdateCampaign(c.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2">
                                 <Save size={16} /> Save
@@ -550,17 +642,17 @@ export default function AdminDashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="p-6 bg-slate-50 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <div className="p-6 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 w-full sm:w-auto">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 flex-1 sm:flex-initial">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Per Victim</p>
-                          <p className="text-lg font-black text-slate-900">KES {c.amount_per_victim.toLocaleString()}</p>
+                          <p className="text-lg font-black text-slate-900">KES {(c.amount_per_victim || 0).toLocaleString()}</p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => handleDisburse(c.id, c.amount_per_victim)}
-                          className="bg-slate-900 text-white px-4 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center gap-2"
+                          className="flex-1 sm:flex-initial bg-slate-900 text-white px-4 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center justify-center gap-2"
                         >
                           <Send size={16} />
                           Disburse
@@ -570,7 +662,7 @@ export default function AdminDashboard() {
                             const victims = profiles.filter(p => p.role === 'victim');
                             victims.forEach(v => sendVoucherSMS(v, c));
                           }}
-                          className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black hover:bg-blue-700 transition-all flex items-center gap-2"
+                          className="flex-1 sm:flex-initial bg-blue-600 text-white px-4 py-3 rounded-xl font-black hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
                         >
                           <PhoneIcon size={16} />
                           Notify

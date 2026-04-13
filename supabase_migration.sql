@@ -25,7 +25,8 @@ create table if not exists public.profiles (
     national_id text unique,
     phone_number text unique,
     county text,
-    role profile_role not null default 'victim'
+    role profile_role not null default 'victim',
+    status text not null default 'pending' check (status in ('pending', 'active', 'suspended'))
 );
 
 alter table public.profiles enable row level security;
@@ -172,7 +173,7 @@ begin
         v_role := coalesce((new.raw_user_meta_data->>'role')::profile_role, 'volunteer');
     end if;
 
-    insert into public.profiles (id, email, full_name, national_id, phone_number, county, role)
+    insert into public.profiles (id, email, full_name, national_id, phone_number, county, role, status)
     values (
         new.id, 
         new.email, 
@@ -180,7 +181,12 @@ begin
         nullif(new.raw_user_meta_data->>'national_id', ''),
         nullif(new.raw_user_meta_data->>'phone_number', ''),
         nullif(new.raw_user_meta_data->>'county', ''),
-        v_role
+        v_role,
+        case 
+            when v_role = 'admin' then 'active'
+            when v_role = 'victim' then 'active'
+            else 'pending'
+        end
     );
 
     insert into public.wallets (profile_id) values (new.id);
@@ -188,6 +194,28 @@ begin
     return new;
 end;
 $$;
+
+-- Function to sync email confirmation status
+create or replace function public.handle_user_update()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+    if new.email_confirmed_at is not null and old.email_confirmed_at is null then
+        update public.profiles
+        set status = 'active'
+        where id = new.id;
+    end if;
+    return new;
+end;
+$$;
+
+-- Trigger for user update
+drop trigger if exists on_auth_user_updated on auth.users;
+create trigger on_auth_user_updated
+  after update on auth.users
+  for each row execute procedure public.handle_user_update();
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created

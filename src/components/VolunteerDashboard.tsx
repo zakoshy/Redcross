@@ -5,14 +5,17 @@ import { Profile, TriageSession } from '../types';
 import { KENYAN_COUNTIES } from '../constants';
 import { 
   UserPlus, ClipboardList, LogOut, MapPin, CreditCard, 
-  Phone, AlertCircle, CheckCircle2, MessageSquare
+  Phone, AlertCircle, CheckCircle2, MessageSquare,
+  Users, Calendar, Search, Filter, Plus
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function VolunteerDashboard() {
   const { signOut, user } = useAuth();
   const [victims, setVictims] = useState<Profile[]>([]);
   const [assignedCases, setAssignedCases] = useState<(TriageSession & { victim?: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'register' | 'cases' | 'history'>('register');
   
   // Registration Form
   const [name, setName] = useState('');
@@ -59,7 +62,7 @@ export default function VolunteerDashboard() {
     e.preventDefault();
     setStatus(null);
 
-    const { data, error } = await supabase.rpc('register_victim', {
+    const { error } = await supabase.rpc('register_victim', {
       p_full_name: name,
       p_national_id: idNumber,
       p_phone_number: phoneNumber,
@@ -75,6 +78,7 @@ export default function VolunteerDashboard() {
       setPhoneNumber('+254');
       setCounty('');
       fetchVictims();
+      setTimeout(() => setStatus(null), 5000);
     }
   }
 
@@ -88,179 +92,357 @@ export default function VolunteerDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <nav className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="text-red-600" />
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Volunteer Portal</h1>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Navigation */}
+      <nav className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-200">
+            <ClipboardList className="text-white" size={24} />
+          </div>
+          <div>
+            <h1 className="text-lg md:text-xl font-black text-slate-900 tracking-tight">VolunteerPortal</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Humanitarian Response</p>
+          </div>
         </div>
-        <button onClick={signOut} className="flex items-center gap-2 text-slate-600 hover:text-red-600 transition-colors font-medium">
-          <LogOut size={18} />
-          <span>Sign Out</span>
-        </button>
+        
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs font-bold text-slate-600">Active Session</span>
+          </div>
+          <button 
+            onClick={signOut} 
+            className="flex items-center gap-2 text-slate-600 hover:text-red-600 transition-all font-bold text-sm bg-white hover:bg-red-50 px-4 py-2 rounded-xl border border-slate-200 hover:border-red-100"
+          >
+            <LogOut size={18} />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
+        </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-8">
-        {/* Assigned Cases Section */}
-        {assignedCases.length > 0 && (
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="text-red-600" size={20} />
-              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Assigned Urgent Cases</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {assignedCases.map(c => (
-                <div key={c.id} className="bg-white p-6 rounded-2xl border-2 border-red-100 shadow-sm space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-black text-slate-900">{c.victim?.full_name}</h3>
-                      <p className="text-xs text-slate-500 font-bold">{c.victim?.phone_number || 'No contact'}</p>
-                    </div>
-                    <span className="bg-red-600 text-white text-[10px] px-2 py-1 rounded-full font-black uppercase">
-                      Risk: {(c.risk_score * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <p className="text-xs text-slate-600 italic leading-relaxed">
-                      <MessageSquare size={12} className="inline mr-1" />
-                      "{c.last_message}"
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => closeCase(c.id)}
-                    className="w-full bg-green-600 text-white py-2 rounded-xl font-black text-sm hover:bg-green-700 transition-all flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 size={16} />
-                    Mark as Resolved
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-8">
+        {/* Quick Stats / Tabs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <TabButton 
+            active={activeTab === 'register'} 
+            onClick={() => setActiveTab('register')}
+            icon={<UserPlus size={20} />}
+            label="Register Victim"
+            description="New field registration"
+          />
+          <TabButton 
+            active={activeTab === 'cases'} 
+            onClick={() => setActiveTab('cases')}
+            icon={<AlertCircle size={20} />}
+            label="Urgent Cases"
+            description={`${assignedCases.length} assigned to you`}
+            badge={assignedCases.length > 0 ? assignedCases.length : undefined}
+          />
+          <TabButton 
+            active={activeTab === 'history'} 
+            onClick={() => setActiveTab('history')}
+            icon={<Calendar size={20} />}
+            label="History"
+            description="Recent registrations"
+          />
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <UserPlus className="text-red-600" size={20} />
-                <h2 className="text-lg font-bold">Register Victim</h2>
-              </div>
-
-              <form onSubmit={handleRegister} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="e.g. Jane Doe"
-                  />
+        <AnimatePresence mode="wait">
+          {activeTab === 'register' && (
+            <motion.div
+              key="register"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto w-full"
+            >
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Victim Registration</h2>
+                  <p className="text-slate-500 font-medium">Collect accurate data to ensure rapid aid delivery.</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">ID Number</label>
-                  <div className="relative">
-                    <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="text"
+
+                <form onSubmit={handleRegister} className="p-8 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <InputField 
+                      label="Full Name" 
+                      value={name} 
+                      onChange={setName} 
+                      placeholder="e.g. Jane Doe"
                       required
-                      value={idNumber}
-                      onChange={(e) => setIdNumber(e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
-                      placeholder="National ID"
+                    />
+                    <InputField 
+                      label="National ID" 
+                      value={idNumber} 
+                      onChange={setIdNumber} 
+                      placeholder="ID Number"
+                      icon={<CreditCard size={18} />}
+                      required
                     />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">Phone Number (+254...)</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={(e) => {
-                        const v = e.target.value;
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <InputField 
+                      label="Phone Number" 
+                      value={phoneNumber} 
+                      onChange={v => {
                         if (v.startsWith('+254') || v === '') setPhoneNumber(v);
                         else if (v.startsWith('254')) setPhoneNumber('+' + v);
                         else if (v.length > 0 && !v.startsWith('+')) setPhoneNumber('+254' + v.replace(/^0/, ''));
                         else setPhoneNumber(v);
-                      }}
-                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
-                      placeholder="e.g. +254..."
+                      }} 
+                      placeholder="+254..."
+                      icon={<Phone size={18} />}
+                      required
                     />
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">County</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                          type="text"
+                          value={county}
+                          onChange={(e) => setCounty(e.target.value)}
+                          className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold transition-all"
+                          placeholder="Select county..."
+                          list="kenyan-counties-volunteer"
+                        />
+                      </div>
+                      <datalist id="kenyan-counties-volunteer">
+                        {KENYAN_COUNTIES.map(c => <option key={c} value={c} />)}
+                      </datalist>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">County</label>
-                  <input
-                    type="text"
-                    value={county}
-                    onChange={(e) => setCounty(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="Type or select county..."
-                    list="kenyan-counties-volunteer"
-                  />
-                  <datalist id="kenyan-counties-volunteer">
-                    {KENYAN_COUNTIES.map(c => <option key={c} value={c} />)}
-                  </datalist>
-                </div>
 
-                {status && (
-                  <div className={`p-3 rounded-lg text-sm font-medium ${status.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
-                    {status.message}
-                  </div>
-                )}
+                  {status && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`p-4 rounded-2xl text-sm font-bold flex items-center gap-3 border ${
+                        status.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                      }`}
+                    >
+                      {status.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                      {status.message}
+                    </motion.div>
+                  )}
 
-                <button type="submit" className="w-full bg-red-600 text-white font-bold py-2 rounded-lg hover:bg-red-700 transition-colors">
-                  Register Victim
-                </button>
-              </form>
-            </div>
-          </div>
+                  <button 
+                    type="submit" 
+                    className="w-full bg-red-600 text-white font-black py-4 rounded-2xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2 group"
+                  >
+                    <Plus size={20} className="group-hover:rotate-90 transition-transform" />
+                    Complete Registration
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
 
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ClipboardList className="text-red-600" size={20} />
-                  <h2 className="text-lg font-bold">Recent Registrations</h2>
-                </div>
+          {activeTab === 'cases' && (
+            <motion.div
+              key="cases"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-black text-slate-900">Assigned Urgent Cases</h2>
+                <span className="bg-red-100 text-red-700 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest">
+                  {assignedCases.length} Active
+                </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Victim</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">National ID</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">County</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Phone</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {loading ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">Loading...</td></tr>
-                    ) : victims.map((v) => (
-                      <tr key={v.id} className="hover:bg-slate-50 transition-colors text-sm">
-                        <td className="px-6 py-4 font-bold text-slate-900">{v.full_name}</td>
-                        <td className="px-6 py-4 text-slate-600 font-mono">{v.national_id}</td>
-                        <td className="px-6 py-4 text-slate-600 font-bold">{v.county || 'N/A'}</td>
-                        <td className="px-6 py-4 text-slate-600">{v.phone_number || 'N/A'}</td>
-                        <td className="px-6 py-4 text-slate-500">
-                          {new Date(v.created_at).toLocaleDateString()}
-                        </td>
+              {assignedCases.length === 0 ? (
+                <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-4">
+                  <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="text-slate-300" size={32} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900">All cases resolved</h3>
+                  <p className="text-slate-500 max-w-xs mx-auto">You have no urgent cases assigned to you at the moment.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {assignedCases.map(c => (
+                    <motion.div 
+                      layout
+                      key={c.id} 
+                      className="bg-white p-6 rounded-3xl border-2 border-red-50 shadow-sm space-y-6 hover:border-red-200 transition-all"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500">
+                            {c.victim?.full_name?.[0]}
+                          </div>
+                          <div>
+                            <h3 className="font-black text-slate-900">{c.victim?.full_name}</h3>
+                            <p className="text-xs text-slate-500 font-bold">{c.victim?.phone_number || 'No contact'}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                            Risk: {(c.risk_score * 100).toFixed(0)}%
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                            {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
+                        <MessageSquare className="absolute -top-2 -left-2 text-red-200" size={20} />
+                        <p className="text-sm text-slate-600 italic leading-relaxed pl-2">
+                          "{c.last_message}"
+                        </p>
+                      </div>
+
+                      <button 
+                        onClick={() => closeCase(c.id)}
+                        className="w-full bg-green-600 text-white py-3 rounded-xl font-black text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle2 size={18} />
+                        Resolve Case
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'history' && (
+            <motion.div
+              key="history"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-6"
+            >
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <Users size={20} className="text-slate-400" />
+                    Recent Registrations
+                  </h3>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:flex-initial">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Search victims..." 
+                        className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500 w-full"
+                      />
+                    </div>
+                    <button className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600">
+                      <Filter size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Victim</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">National ID</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Phone</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Date</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loading ? (
+                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">Loading records...</td></tr>
+                      ) : victims.length === 0 ? (
+                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">No victims registered yet.</td></tr>
+                      ) : victims.map((v) => (
+                        <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xs font-black text-slate-500">
+                                {v.full_name?.[0]}
+                              </div>
+                              <span className="font-bold text-slate-900">{v.full_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 font-mono text-sm">{v.national_id}</td>
+                          <td className="px-6 py-4">
+                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                              {v.county || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 font-medium text-sm">{v.phone_number || 'N/A'}</td>
+                          <td className="px-6 py-4 text-slate-400 text-xs font-bold">
+                            {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label, description, badge }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, description: string, badge?: number }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`p-6 rounded-3xl border text-left transition-all relative group overflow-hidden ${
+        active 
+          ? 'bg-white border-red-200 shadow-lg shadow-red-100 ring-1 ring-red-100' 
+          : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+      }`}
+    >
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-all ${
+        active ? 'bg-red-600 text-white rotate-3' : 'bg-slate-50 text-slate-400 group-hover:scale-110'
+      }`}>
+        {icon}
+      </div>
+      <h3 className={`font-black tracking-tight mb-1 ${active ? 'text-slate-900' : 'text-slate-600'}`}>{label}</h3>
+      <p className="text-xs text-slate-400 font-medium">{description}</p>
+      
+      {badge && (
+        <span className="absolute top-6 right-6 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-bounce">
+          {badge}
+        </span>
+      )}
+
+      {active && (
+        <motion.div 
+          layoutId="active-tab-indicator"
+          className="absolute bottom-0 left-0 right-0 h-1 bg-red-600"
+        />
+      )}
+    </button>
+  );
+}
+
+function InputField({ label, value, onChange, placeholder, icon, type = 'text', required = false }: { label: string, value: string, onChange: (v: string) => void, placeholder: string, icon?: React.ReactNode, type?: string, required?: boolean }) {
+  return (
+    <div>
+      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">{label}</label>
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+            {icon}
+          </div>
+        )}
+        <input
+          type={type}
+          required={required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full ${icon ? 'pl-12' : 'px-4'} pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold transition-all placeholder:text-slate-300`}
+          placeholder={placeholder}
+        />
+      </div>
     </div>
   );
 }

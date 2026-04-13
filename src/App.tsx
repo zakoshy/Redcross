@@ -8,6 +8,7 @@ import AdminDashboard from './components/AdminDashboard';
 import VolunteerDashboard from './components/VolunteerDashboard';
 import MerchantDashboard from './components/MerchantDashboard';
 import VictimChatbot from './components/VictimChatbot';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
@@ -64,48 +65,50 @@ function AuthenticatedRedirect({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={
-            <AuthenticatedRedirect>
-              <Login />
-            </AuthenticatedRedirect>
-          } />
-          <Route path="/signup" element={
-            <AuthenticatedRedirect>
-              <Signup />
-            </AuthenticatedRedirect>
-          } />
-          
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/volunteer" element={
-            <ProtectedRoute allowedRoles={['volunteer']}>
-              <VolunteerDashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/merchant" element={
-            <ProtectedRoute allowedRoles={['merchant']}>
-              <MerchantDashboard />
-            </ProtectedRoute>
-          } />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={
+              <AuthenticatedRedirect>
+                <Login />
+              </AuthenticatedRedirect>
+            } />
+            <Route path="/signup" element={
+              <AuthenticatedRedirect>
+                <Signup />
+              </AuthenticatedRedirect>
+            } />
+            
+            <Route path="/admin" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/volunteer" element={
+              <ProtectedRoute allowedRoles={['volunteer']}>
+                <VolunteerDashboard />
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/merchant" element={
+              <ProtectedRoute allowedRoles={['merchant']}>
+                <MerchantDashboard />
+              </ProtectedRoute>
+            } />
 
-          <Route path="/chat" element={
-            <ProtectedRoute allowedRoles={['victim']}>
-              <VictimChatbot />
-            </ProtectedRoute>
-          } />
+            <Route path="/chat" element={
+              <ProtectedRoute allowedRoles={['victim']}>
+                <VictimChatbot />
+              </ProtectedRoute>
+            } />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

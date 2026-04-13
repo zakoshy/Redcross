@@ -37,7 +37,7 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-5xl md:text-7xl font-black tracking-tight mb-6"
+          className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tight mb-6"
         >
           Relief<span className="text-red-500">Voucher</span>
         </motion.h1>
@@ -46,7 +46,7 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
-          className="text-xl md:text-2xl text-slate-200 mb-12 max-w-2xl mx-auto leading-relaxed"
+          className="text-lg sm:text-xl md:text-2xl text-slate-200 mb-8 md:mb-12 max-w-2xl mx-auto leading-relaxed"
         >
           A secure, real-time humanitarian aid distribution system. 
           Empowering volunteers and merchants to deliver relief where it's needed most.
@@ -60,7 +60,7 @@ export default function LandingPage() {
         >
           <button
             onClick={() => navigate('/login')}
-            className="group relative px-12 py-4 bg-red-600 hover:bg-red-700 text-white rounded-full font-bold text-lg transition-all shadow-xl hover:shadow-red-500/20 flex items-center justify-center gap-2"
+            className="group relative px-8 md:px-12 py-3 md:py-4 bg-red-600 hover:bg-red-700 text-white rounded-full font-bold text-base md:text-lg transition-all shadow-xl hover:shadow-red-500/20 flex items-center justify-center gap-2"
           >
             Access Portal
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -71,7 +71,7 @@ export default function LandingPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 1 }}
-          className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-8 text-left"
+          className="mt-16 md:mt-24 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-8 text-left"
         >
           <div className="bg-white/5 backdrop-blur-sm p-6 rounded-2xl border border-white/10">
             <Shield className="text-red-400 mb-4" />
