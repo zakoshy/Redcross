@@ -32,8 +32,9 @@ export default function AdminDashboard() {
   });
   const [newCampaign, setNewCampaign] = useState({ name: '', description: '', amount: 5000 });
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
-  const [editCampaignData, setEditCampaignData] = useState({ name: '', description: '', amount_per_victim: 0 });
+  const [editCampaignData, setEditCampaignData] = useState({ name: '', description: '', amount: 0 });
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -124,7 +125,7 @@ export default function AdminDashboard() {
     const { error } = await supabase.from('campaigns').insert({
       name: newCampaign.name,
       description: newCampaign.description,
-      amount_per_victim: newCampaign.amount
+      amount: newCampaign.amount
     });
 
     if (error) {
@@ -137,17 +138,22 @@ export default function AdminDashboard() {
   }
 
   async function handleDeleteCampaign(id: string) {
-    if (!confirm('Are you sure you want to delete this campaign?')) return;
-    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    setDeleteConfirmId(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmId) return;
+    const { error } = await supabase.from('campaigns').delete().eq('id', deleteConfirmId);
     if (error) setStatus({ type: 'error', message: error.message });
     else fetchCampaigns();
+    setDeleteConfirmId(null);
   }
 
   async function handleUpdateCampaign(id: string) {
     const { error } = await supabase.from('campaigns').update({
       name: editCampaignData.name,
       description: editCampaignData.description,
-      amount_per_victim: editCampaignData.amount_per_victim
+      amount: editCampaignData.amount
     }).eq('id', id);
 
     if (error) {
@@ -170,7 +176,7 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: profile.phone_number,
-          message: `Hello ${profile.full_name}, your voucher for ${campaign.name} is ready. Dial *384*1234# to redeem KES ${campaign.amount_per_victim}.`
+          message: `Hello ${profile.full_name}, your voucher for ${campaign.name} is ready. Dial *384*1234# to redeem KES ${campaign.amount}.`
         })
       });
       const result = await response.json();
@@ -598,7 +604,7 @@ export default function AdminDashboard() {
                           <div className="space-y-4">
                             <Input label="Name" value={editCampaignData.name} onChange={v => setEditCampaignData({...editCampaignData, name: v})} />
                             <Input label="Description" value={editCampaignData.description} onChange={v => setEditCampaignData({...editCampaignData, description: v})} />
-                            <Input label="Amount (KES)" type="number" value={(editCampaignData.amount_per_victim || 0).toString()} onChange={v => setEditCampaignData({...editCampaignData, amount_per_victim: parseFloat(v) || 0})} />
+                            <Input label="Amount (KES)" type="number" value={(editCampaignData.amount || 0).toString()} onChange={v => setEditCampaignData({...editCampaignData, amount: parseFloat(v) || 0})} />
                             <div className="flex gap-2">
                               <button onClick={() => handleUpdateCampaign(c.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2">
                                 <Save size={16} /> Save
@@ -626,7 +632,7 @@ export default function AdminDashboard() {
                             <button 
                               onClick={() => {
                                 setEditingCampaign(c.id);
-                                setEditCampaignData({ name: c.name, description: c.description, amount_per_victim: c.amount_per_victim });
+                                setEditCampaignData({ name: c.name, description: c.description, amount: c.amount });
                               }}
                               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                             >
@@ -646,12 +652,12 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-4 w-full sm:w-auto">
                         <div className="bg-white p-3 rounded-xl border border-slate-200 flex-1 sm:flex-initial">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Per Victim</p>
-                          <p className="text-lg font-black text-slate-900">KES {(c.amount_per_victim || 0).toLocaleString()}</p>
+                          <p className="text-lg font-black text-slate-900">KES {(c.amount || 0).toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="flex gap-2 w-full sm:w-auto">
                         <button 
-                          onClick={() => handleDisburse(c.id, c.amount_per_victim)}
+                          onClick={() => handleDisburse(c.id, c.amount)}
                           className="flex-1 sm:flex-initial bg-slate-900 text-white px-4 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center justify-center gap-2"
                         >
                           <Send size={16} />
@@ -778,6 +784,46 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {deleteConfirmId && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center"
+              >
+                <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="text-red-600" size={32} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mb-2">Delete Campaign?</h3>
+                <p className="text-slate-500 font-medium mb-8">
+                  This action cannot be undone. All data associated with this campaign will be permanently removed.
+                </p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setDeleteConfirmId(null)}
+                    className="flex-1 px-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmDelete}
+                    className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>

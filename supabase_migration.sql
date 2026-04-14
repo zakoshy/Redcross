@@ -47,7 +47,7 @@ create table if not exists public.campaigns (
     created_at timestamptz not null default now(),
     name text not null,
     description text,
-    amount_per_victim numeric(10,2) not null default 0,
+    amount numeric(10,2) not null default 0,
     status text check (status in ('active','completed')) default 'active'
 );
 

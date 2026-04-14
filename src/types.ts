@@ -23,7 +23,7 @@ export interface Campaign {
   id: string;
   name: string;
   description: string;
-  amount_per_victim: number;
+  amount: number;
   status: 'active' | 'completed';
   created_at: string;
 }
