@@ -172,12 +172,13 @@ export default function AdminDashboard() {
     }
 
     try {
+      const chatbotUrl = `${window.location.origin}/chat`;
       const response = await fetch('/api/sms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: profile.phone_number,
-          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Please walk to the nearby merchant to redeem your KES ${campaign.amount} voucher.`
+          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Redeem KES ${campaign.amount} at a nearby merchant. Dial *384*34091# to check balance or chat with us here: ${chatbotUrl}`
         })
       });
       const result = await response.json();
