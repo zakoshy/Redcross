@@ -58,7 +58,7 @@ create table if not exists public.ledger (
     id bigserial primary key,
     created_at timestamptz not null default now(),
     wallet_id uuid references public.wallets(id),
-    campaign_id uuid references public.campaigns(id),
+    campaign_id uuid references public.campaigns(id) on delete set null,
     amount numeric(10,2) not null,
     transaction_type transaction_type not null,
     idempotency_key uuid unique,
