@@ -4,9 +4,15 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { createRequire } from "module";
 import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 
 const require = createRequire(import.meta.url);
 dotenv.config();
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.VITE_SUPABASE_ANON_KEY || ''
+);
 
 let atSms: any = null;
 let twilioClient: any = null;
@@ -54,7 +60,7 @@ async function startServer() {
   });
 
   // Africa's Talking USSD Callback
-  app.post("/api/ussd", (req, res) => {
+  app.post("/api/ussd", async (req, res) => {
     const { sessionId, serviceCode, phoneNumber, text } = req.body;
 
     let response = "";
@@ -66,10 +72,34 @@ async function startServer() {
 2. Redeem Voucher
 3. Emergency Support`;
     } else if (text === "1") {
-      // Logic to check balance from Supabase would go here
-      // For now, a placeholder
-      response = `END Your current balance is KES 5,000.
+      try {
+        // Fetch profile by phone number
+        const { data: profile, error: pError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .eq('phone_number', phoneNumber)
+          .single();
+
+        if (pError || !profile) {
+          response = `END Error: Phone number ${phoneNumber} not registered in PFA system.`;
+        } else {
+          // Fetch wallet balance
+          const { data: wallet, error: wError } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('profile_id', profile.id)
+            .single();
+
+          if (wError || !wallet) {
+            response = `END Error: Wallet not found for ${profile.full_name}.`;
+          } else {
+            response = `END Hello ${profile.full_name}, your current relief balance is KES ${wallet.balance.toLocaleString()}.
 Thank you for using PFA.`;
+          }
+        }
+      } catch (err) {
+        response = `END System error. Please try again later.`;
+      }
     } else if (text === "2") {
       response = `CON Enter Voucher Code:`;
     } else if (text === "3") {

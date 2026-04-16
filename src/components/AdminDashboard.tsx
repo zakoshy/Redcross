@@ -35,6 +35,7 @@ export default function AdminDashboard() {
   const [editCampaignData, setEditCampaignData] = useState({ name: '', description: '', amount: 0 });
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [selectedCounties, setSelectedCounties] = useState<Record<string, string>>({});
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -176,7 +177,7 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: profile.phone_number,
-          message: `Hello ${profile.full_name}, your voucher for ${campaign.name} is ready. Dial *384*1234# to redeem KES ${campaign.amount}.`
+          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Please walk to the nearby merchant to redeem your KES ${campaign.amount} voucher.`
         })
       });
       const result = await response.json();
@@ -192,9 +193,15 @@ export default function AdminDashboard() {
 
   async function handleDisburse(campaignId: string, amount: number) {
     setStatus(null);
-    const victims = profiles.filter(p => p.role === 'victim');
+    const county = selectedCounties[campaignId];
+    
+    let victims = profiles.filter(p => p.role === 'victim');
+    if (county && county !== 'All Counties') {
+      victims = victims.filter(p => p.county === county);
+    }
+
     if (victims.length === 0) {
-      setStatus({ type: 'error', message: 'No victims found to disburse to.' });
+      setStatus({ type: 'error', message: `No victims found in ${county || 'the selected area'} to disburse to.` });
       return;
     }
 
@@ -202,11 +209,18 @@ export default function AdminDashboard() {
       victim_profile_ids: victims.map(v => v.id),
       disbursement_amount: amount,
       p_campaign_id: campaignId,
-      idempotency_key_prefix: `disburse-${campaignId}-${Date.now()}-`
+      idempotency_key_prefix: `disburse-${campaignId}-${county || 'all'}-${Date.now()}-`
     });
 
     if (error) setStatus({ type: 'error', message: error.message });
-    else setStatus({ type: 'success', message: `Disbursement of KES ${amount.toLocaleString()} triggered for ${victims.length} victims!` });
+    else {
+      setStatus({ type: 'success', message: `Disbursement of KES ${amount.toLocaleString()} triggered for ${victims.length} victims in ${county || 'all areas'}!` });
+      // Also trigger notifications
+      const campaign = campaigns.find(c => c.id === campaignId);
+      if (campaign) {
+        victims.forEach(v => sendVoucherSMS(v, campaign));
+      }
+    }
   }
 
   async function assignVolunteer(sessionId: number, volunteerId: string) {
@@ -234,6 +248,8 @@ export default function AdminDashboard() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentProfiles = profiles.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(profiles.length / itemsPerPage);
+
+  const availableCounties = Array.from(new Set(profiles.filter(p => p.role === 'victim' && p.county).map(p => p.county as string))).sort();
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
@@ -649,29 +665,32 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div className="p-6 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 w-full sm:w-auto">
-                        <div className="bg-white p-3 rounded-xl border border-slate-200 flex-1 sm:flex-initial">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 w-full sm:w-auto">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Per Victim</p>
                           <p className="text-lg font-black text-slate-900">KES {(c.amount || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="w-full sm:w-48">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Target County</p>
+                          <select 
+                            value={selectedCounties[c.id] || ''}
+                            onChange={(e) => setSelectedCounties({...selectedCounties, [c.id]: e.target.value})}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-red-500 transition-all"
+                          >
+                            <option value="">All Counties</option>
+                            {availableCounties.map(county => (
+                              <option key={county} value={county}>{county}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                       <div className="flex gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => handleDisburse(c.id, c.amount)}
-                          className="flex-1 sm:flex-initial bg-slate-900 text-white px-4 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center justify-center gap-2"
+                          className="flex-1 sm:flex-initial bg-slate-900 text-white px-6 py-3 rounded-xl font-black hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-200"
                         >
                           <Send size={16} />
-                          Disburse
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const victims = profiles.filter(p => p.role === 'victim');
-                            victims.forEach(v => sendVoucherSMS(v, c));
-                          }}
-                          className="flex-1 sm:flex-initial bg-blue-600 text-white px-4 py-3 rounded-xl font-black hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-                        >
-                          <PhoneIcon size={16} />
-                          Notify
+                          Disburse & Notify
                         </button>
                       </div>
                     </div>

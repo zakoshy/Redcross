@@ -324,7 +324,7 @@ begin
     loop
         select id into victim_wallet_id from public.wallets where profile_id = victim_id;
         if found then
-            idem_key := (idempotency_key_prefix || victim_id::text)::uuid;
+            idem_key := cast(md5(idempotency_key_prefix || victim_id::text) as uuid);
             if not exists (select 1 from public.ledger where idempotency_key = idem_key) then
                 insert into public.ledger (wallet_id, campaign_id, amount, transaction_type, idempotency_key, description)
                 values (victim_wallet_id, p_campaign_id, disbursement_amount, 'AID_DISBURSEMENT', idem_key, 'Aid disbursement: ' || campaign_name_text);
