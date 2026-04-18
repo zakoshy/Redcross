@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [triageSessions, setTriageSessions] = useState<TriageSession[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
   // Form States
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
   }
 
   async function fetchProfiles() {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase.from('profiles').select('*').order('full_name', { ascending: true });
     if (data) {
       setProfiles(data);
       setVolunteers(data.filter(p => p.role === 'volunteer'));
@@ -245,10 +246,16 @@ export default function AdminDashboard() {
   };
 
   // Pagination Logic
+  const filteredProfiles = profiles.filter(p => 
+    (p.full_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (p.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (p.phone_number?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+  );
+
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentProfiles = profiles.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(profiles.length / itemsPerPage);
+  const currentProfiles = filteredProfiles.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredProfiles.length / itemsPerPage);
 
   const availableCounties = Array.from(new Set(profiles.filter(p => p.role === 'victim' && p.county).map(p => p.county as string))).sort();
 
@@ -479,7 +486,16 @@ export default function AdminDashboard() {
                     <h3 className="text-lg font-bold">System Users</h3>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input type="text" placeholder="Search users..." className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500" />
+                      <input 
+                        type="text" 
+                        placeholder="Search users..." 
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500" 
+                      />
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -544,7 +560,7 @@ export default function AdminDashboard() {
                   {totalPages > 1 && (
                     <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                       <p className="text-sm font-medium text-slate-500">
-                        Showing <span className="text-slate-900">{indexOfFirstItem + 1}</span> to <span className="text-slate-900">{Math.min(indexOfLastItem, profiles.length)}</span> of <span className="text-slate-900">{profiles.length}</span> users
+                        Showing <span className="text-slate-900">{indexOfFirstItem + 1}</span> to <span className="text-slate-900">{Math.min(indexOfLastItem, filteredProfiles.length)}</span> of <span className="text-slate-900">{filteredProfiles.length}</span> users
                       </p>
                       <div className="flex items-center gap-2">
                         <button 
