@@ -6,7 +6,7 @@ import { KENYAN_COUNTIES } from '../constants';
 import { 
   UserPlus, ClipboardList, LogOut, MapPin, CreditCard, 
   Phone, AlertCircle, CheckCircle2, MessageSquare,
-  Users, Calendar, Search, Filter, Plus
+  Users, Calendar, Search, Filter, Plus, Edit, Save, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -24,6 +24,16 @@ export default function VolunteerDashboard() {
   const [county, setCounty] = useState('');
   
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  
+  // Search and edit history states
+  const [searchHistory, setSearchHistory] = useState('');
+  const [editingVictim, setEditingVictim] = useState<Profile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editIdNumber, setEditIdNumber] = useState('');
+  const [editPhoneNumber, setEditPhoneNumber] = useState('');
+  const [editCounty, setEditCounty] = useState('');
+  const [editStatusMsg, setEditStatusMsg] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -89,6 +99,43 @@ export default function VolunteerDashboard() {
       .eq('id', sessionId);
 
     if (!error) fetchAssignedCases();
+  }
+
+  const startEditing = (v: Profile) => {
+    setEditingVictim(v);
+    setEditName(v.full_name || '');
+    setEditIdNumber(v.national_id || '');
+    setEditPhoneNumber(v.phone_number || '');
+    setEditCounty(v.county || '');
+    setEditStatusMsg(null);
+  };
+
+  async function handleUpdateVictim(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingVictim) return;
+    setSaving(true);
+    setEditStatusMsg(null);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: editName,
+        national_id: editIdNumber,
+        phone_number: editPhoneNumber,
+        county: editCounty
+      })
+      .eq('id', editingVictim.id);
+
+    setSaving(false);
+    if (error) {
+      setEditStatusMsg({ type: 'error', message: error.message });
+    } else {
+      setEditStatusMsg({ type: 'success', message: 'Victim profile updated successfully!' });
+      fetchVictims();
+      setTimeout(() => {
+        setEditingVictim(null);
+      }, 1200);
+    }
   }
 
   return (
@@ -331,6 +378,8 @@ export default function VolunteerDashboard() {
                       <input 
                         type="text" 
                         placeholder="Search victims..." 
+                        value={searchHistory}
+                        onChange={(e) => setSearchHistory(e.target.value)}
                         className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500 w-full"
                       />
                     </div>
@@ -349,35 +398,56 @@ export default function VolunteerDashboard() {
                         <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
                         <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Phone</th>
                         <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Date</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loading ? (
-                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">Loading records...</td></tr>
+                        <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">Loading records...</td></tr>
                       ) : victims.length === 0 ? (
-                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">No victims registered yet.</td></tr>
-                      ) : victims.map((v) => (
-                        <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xs font-black text-slate-500">
-                                {v.full_name?.[0]}
+                        <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">No victims registered yet.</td></tr>
+                      ) : (() => {
+                        const filtered = victims.filter(v => 
+                          (v.full_name?.toLowerCase() || '').includes(searchHistory.toLowerCase()) ||
+                          (v.national_id?.toLowerCase() || '').includes(searchHistory.toLowerCase()) ||
+                          (v.phone_number?.toLowerCase() || '').includes(searchHistory.toLowerCase()) ||
+                          (v.county?.toLowerCase() || '').includes(searchHistory.toLowerCase())
+                        );
+                        if (filtered.length === 0) {
+                          return <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">No matching records found.</td></tr>;
+                        }
+                        return filtered.map((v) => (
+                          <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xs font-black text-slate-500">
+                                  {v.full_name?.[0]}
+                                </div>
+                                <span className="font-bold text-slate-900">{v.full_name}</span>
                               </div>
-                              <span className="font-bold text-slate-900">{v.full_name}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-slate-600 font-mono text-sm">{v.national_id}</td>
-                          <td className="px-6 py-4">
-                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                              {v.county || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-slate-600 font-medium text-sm">{v.phone_number || 'N/A'}</td>
-                          <td className="px-6 py-4 text-slate-400 text-xs font-bold">
-                            {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-6 py-4 text-slate-600 font-mono text-sm">{v.national_id}</td>
+                            <td className="px-6 py-4">
+                              <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                {v.county || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-slate-600 font-medium text-sm">{v.phone_number || 'N/A'}</td>
+                            <td className="px-6 py-4 text-slate-400 text-xs font-bold">
+                              {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                onClick={() => startEditing(v)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 border border-slate-200 hover:border-red-100 text-slate-600 font-bold rounded-xl text-xs transition-all"
+                              >
+                                <Edit size={12} />
+                                Edit Info
+                              </button>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -386,6 +456,112 @@ export default function VolunteerDashboard() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Edit Victim Modal */}
+      <AnimatePresence>
+        {editingVictim && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white w-full max-w-lg rounded-3xl shadow-xl border border-slate-200 overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Edit Victim Profile</h3>
+                  <p className="text-xs text-slate-400 font-bold">Update personal details for field corrections</p>
+                </div>
+                <button 
+                  onClick={() => setEditingVictim(null)}
+                  className="p-1.5 bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl border border-slate-200 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateVictim} className="p-6 space-y-5">
+                <InputField 
+                  label="Full Name" 
+                  value={editName} 
+                  onChange={setEditName} 
+                  placeholder="Jane Doe"
+                  required
+                />
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <InputField 
+                    label="National ID" 
+                    value={editIdNumber} 
+                    onChange={setEditIdNumber} 
+                    placeholder="ID Number"
+                    icon={<CreditCard size={18} />}
+                    required
+                  />
+                  <InputField 
+                    label="Phone Number" 
+                    value={editPhoneNumber} 
+                    onChange={v => {
+                      if (v.startsWith('+254') || v === '') setEditPhoneNumber(v);
+                      else if (v.startsWith('254')) setEditPhoneNumber('+' + v);
+                      else if (v.length > 0 && !v.startsWith('+')) setEditPhoneNumber('+254' + v.replace(/^0/, ''));
+                      else setEditPhoneNumber(v);
+                    }} 
+                    placeholder="+254..."
+                    icon={<Phone size={18} />}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">County</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                      type="text"
+                      value={editCounty}
+                      onChange={(e) => setEditCounty(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold transition-all"
+                      placeholder="Select county..."
+                      list="kenyan-counties-volunteer-edit"
+                    />
+                  </div>
+                  <datalist id="kenyan-counties-volunteer-edit">
+                    {KENYAN_COUNTIES.map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
+
+                {editStatusMsg && (
+                  <div className={`p-4 rounded-xl text-xs font-bold flex items-center gap-3 border ${
+                    editStatusMsg.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                  }`}>
+                    {editStatusMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    {editStatusMsg.message}
+                  </div>
+                )}
+
+                <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditingVictim(null)}
+                    className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black rounded-xl text-sm shadow-md shadow-red-100 flex items-center gap-2 transition-all"
+                  >
+                    <Save size={16} />
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

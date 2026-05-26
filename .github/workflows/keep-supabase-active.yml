@@ -1,0 +1,38 @@
+name: Keep Supabase Active
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Scheduled to run daily at midnight UTC
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API to prevent pausing
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Error: Required secrets SUPABASE_URL or SUPABASE_ANON_KEY are missing from Action Secrets!"
+            exit 1
+          fi
+          
+          # Trim trailing slash from URL if present
+          CLEAN_URL=$(echo "$SUPABASE_URL" | sed 's/\/$//')
+          
+          echo "Sending a lightweight request to the profiles table to produce SQL activity..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$CLEAN_URL/rest/v1/profiles?select=count&limit=1")
+          
+          echo "Response Status Code: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 204 ] || [ "$HTTP_STATUS" -eq 406 ]; then
+            echo "Successfully pinged Supabase REST API! The free tier database has been kept active."
+          else
+            echo "Failed to query Supabase API! Received status code $HTTP_STATUS. Please verify your secrets."
+            exit 1
+          fi

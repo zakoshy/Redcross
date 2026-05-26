@@ -129,6 +129,9 @@ create policy "admin manage all profiles" on public.profiles for all using (publ
 drop policy if exists "volunteers view victims" on public.profiles;
 create policy "volunteers view victims" on public.profiles for select using (public.check_is_volunteer() and role = 'victim');
 
+drop policy if exists "volunteers update victims" on public.profiles;
+create policy "volunteers update victims" on public.profiles for update using (public.check_is_volunteer() and role = 'victim') with check (public.check_is_volunteer() and role = 'victim');
+
 -- Wallets Policies
 drop policy if exists "view own wallet" on public.wallets;
 create policy "view own wallet" on public.wallets for select using (profile_id = auth.uid());
@@ -170,7 +173,11 @@ begin
     if new.email = 'edwindezak@gmail.com' then
         v_role := 'admin';
     else
-        v_role := coalesce((new.raw_user_meta_data->>'role')::profile_role, 'volunteer');
+        begin
+            v_role := coalesce((new.raw_user_meta_data->>'role')::profile_role, 'volunteer');
+        exception when others then
+            v_role := 'volunteer';
+        end;
     end if;
 
     insert into public.profiles (id, email, full_name, national_id, phone_number, county, role, status)
@@ -187,9 +194,18 @@ begin
             when v_role = 'victim' then 'active'
             else 'pending'
         end
-    );
+    )
+    on conflict (id) do update set
+        email = excluded.email,
+        full_name = coalesce(excluded.full_name, profiles.full_name),
+        national_id = coalesce(excluded.national_id, profiles.national_id),
+        phone_number = coalesce(excluded.phone_number, profiles.phone_number),
+        county = coalesce(excluded.county, profiles.county),
+        role = excluded.role;
 
-    insert into public.wallets (profile_id) values (new.id);
+    insert into public.wallets (profile_id) 
+    values (new.id)
+    on conflict (profile_id) do nothing;
 
     return new;
 end;
