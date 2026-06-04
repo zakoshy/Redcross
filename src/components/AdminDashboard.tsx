@@ -166,10 +166,9 @@ export default function AdminDashboard() {
     }
   }
 
-  async function sendVoucherSMS(profile: Profile, campaign: Campaign) {
+  async function sendVoucherSMS(profile: Profile, campaign: Campaign): Promise<{ success: boolean; message: string }> {
     if (!profile.phone_number) {
-      setStatus({ type: 'error', message: 'User has no phone number' });
-      return;
+      return { success: false, message: `${profile.full_name} has no phone number` };
     }
 
     try {
@@ -180,17 +179,17 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: profile.phone_number,
-          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Voucher Code: ${voucherCode}. Redeem KES ${campaign.amount} by presenting your code or scanning your QR at any authorized merchant. Dial *384*34091# or visit: ${chatbotUrl}`
+          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Voucher Number: ${voucherCode}. Present this Voucher Number (${voucherCode}) to any authorized merchant to redeem your KES ${campaign.amount} relief credit. Dial *384*34091# or visit: ${chatbotUrl}`
         })
       });
       const result = await response.json();
       if (result.success) {
-        setStatus({ type: 'success', message: `SMS sent to ${profile.full_name}` });
+        return { success: true, message: `SMS sent to ${profile.full_name}` };
       } else {
-        throw new Error(result.error);
+        return { success: false, message: result.error || 'Unknown error' };
       }
     } catch (error) {
-      setStatus({ type: 'error', message: `Failed to send SMS: ${String(error)}` });
+      return { success: false, message: String(error) };
     }
   }
 
@@ -203,27 +202,65 @@ export default function AdminDashboard() {
       victims = victims.filter(p => p.county === county);
     }
 
+    console.log("[Disbursement Diagnostics] Selected county:", county);
+    console.log("[Disbursement Diagnostics] Recipient Victims count:", victims.length);
+    console.log("[Disbursement Diagnostics] Victims list:", victims);
+
     if (victims.length === 0) {
-      setStatus({ type: 'error', message: `No victims found in ${county || 'the selected area'} to disburse to.` });
+      const errorMsg = `No victims found in ${county || 'the selected area'} to disburse to.`;
+      console.warn("[Disbursement Diagnostics]", errorMsg);
+      setStatus({ type: 'error', message: errorMsg });
       return;
     }
 
-    const { error } = await supabase.rpc('disburse_aid', {
+    const payload = {
       victim_profile_ids: victims.map(v => v.id),
       disbursement_amount: amount,
       p_campaign_id: campaignId,
       idempotency_key_prefix: `disburse-${campaignId}-${county || 'all'}-${Date.now()}-`
+    };
+
+    console.log("[Disbursement Diagnostics] Calling disburse_aid RPC with payload:", payload);
+
+    const { data, error } = await supabase.rpc('disburse_aid', payload);
+
+    console.log("[Disbursement Diagnostics] RPC Response Data:", data);
+    if (error) {
+      console.error("[Disbursement Diagnostics] RPC execution error:", error);
+      setStatus({ type: 'error', message: `Database Error: ${error.message} (${error.code || 'Unspecified'})` });
+      return;
+    }
+
+    setStatus({ 
+      type: 'success', 
+      message: `Disbursement of KES ${amount.toLocaleString()} triggered for ${victims.length} victims in ${county || 'all areas'}. Processing notifications...` 
     });
 
-    if (error) setStatus({ type: 'error', message: error.message });
-    else {
-      setStatus({ type: 'success', message: `Disbursement of KES ${amount.toLocaleString()} triggered for ${victims.length} victims in ${county || 'all areas'}!` });
-      // Also trigger notifications
-      const campaign = campaigns.find(c => c.id === campaignId);
-      if (campaign) {
-        victims.forEach(v => sendVoucherSMS(v, campaign));
-      }
-      fetchLedger();
+    // Refresh ledger data right away to reflect changes on dashboard and charts
+    console.log("[Disbursement Diagnostics] Refreshing ledger and profile data...");
+    await Promise.all([fetchLedger(), fetchProfiles(), fetchCampaigns()]);
+
+    // Also trigger SMS notifications
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (campaign) {
+      const smsPromises = victims.map(v => sendVoucherSMS(v, campaign));
+      Promise.all(smsPromises).then((results) => {
+        const successCount = results.filter(r => r.success).length;
+        const failures = results.filter(r => !r.success);
+        
+        if (failures.length === 0) {
+          setStatus({ 
+            type: 'success', 
+            message: `Disbursement of KES ${amount.toLocaleString()} completed successfully! Voucher SMS notifications sent to all ${victims.length} victims.` 
+          });
+        } else {
+          console.warn("[Disbursement Diagnostics] Some sandbox SMS delivery failures (expected for unwhitelisted or mock numbers in AT Sandbox):", failures);
+          setStatus({ 
+            type: 'success', 
+            message: `Disbursement of KES ${amount.toLocaleString()} completed successfully! Sent SMS to ${successCount}/${victims.length} victims. (Note: in Sandbox mode, SMS are only delivered to active simulated phone numbers in your team list, but the wallets are fully credited).` 
+          });
+        }
+      });
     }
   }
 

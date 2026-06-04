@@ -451,14 +451,19 @@ begin
     foreach victim_id in array victim_profile_ids
     loop
         select id into victim_wallet_id from public.wallets where profile_id = victim_id;
-        if found then
-            idem_key := cast(md5(idempotency_key_prefix || victim_id::text) as uuid);
-            if not exists (select 1 from public.ledger where idempotency_key = idem_key) then
-                insert into public.ledger (wallet_id, profile_id, campaign_id, amount, transaction_type, idempotency_key, description)
-                values (victim_wallet_id, victim_id, p_campaign_id, disbursement_amount, 'AID_DISBURSEMENT', idem_key, 'Aid disbursement: ' || campaign_name_text);
+        if not found then
+            -- Auto-create missing wallet for this victim profile dynamically to prevent silent skips
+            insert into public.wallets (profile_id, balance)
+            values (victim_id, 0)
+            returning id into victim_wallet_id;
+        end if;
 
-                update public.wallets set balance = balance + disbursement_amount where id = victim_wallet_id;
-            end if;
+        idem_key := cast(md5(idempotency_key_prefix || victim_id::text) as uuid);
+        if not exists (select 1 from public.ledger where idempotency_key = idem_key) then
+            insert into public.ledger (wallet_id, profile_id, campaign_id, amount, transaction_type, idempotency_key, description)
+            values (victim_wallet_id, victim_id, p_campaign_id, disbursement_amount, 'AID_DISBURSEMENT', idem_key, 'Aid disbursement: ' || campaign_name_text);
+
+            update public.wallets set balance = balance + disbursement_amount where id = victim_wallet_id;
         end if;
     end loop;
 
