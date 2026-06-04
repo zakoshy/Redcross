@@ -15,7 +15,7 @@ export default function VolunteerDashboard() {
   const [victims, setVictims] = useState<Profile[]>([]);
   const [assignedCases, setAssignedCases] = useState<(TriageSession & { victim?: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'register' | 'cases' | 'history'>('register');
+  const [activeTab, setActiveTab] = useState<'register' | 'cases' | 'history' | 'search'>('register');
   
   // Registration Form
   const [name, setName] = useState('');
@@ -25,6 +25,11 @@ export default function VolunteerDashboard() {
   
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   
+  // Search and view states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCounty, setFilterCounty] = useState('All Counties');
+  const [selectedVictim, setSelectedVictim] = useState<Profile | null>(null);
+
   // Search and edit history states
   const [searchHistory, setSearchHistory] = useState('');
   const [editingVictim, setEditingVictim] = useState<Profile | null>(null);
@@ -169,7 +174,7 @@ export default function VolunteerDashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-8">
         {/* Quick Stats / Tabs */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <TabButton 
             active={activeTab === 'register'} 
             onClick={() => setActiveTab('register')}
@@ -186,11 +191,18 @@ export default function VolunteerDashboard() {
             badge={assignedCases.length > 0 ? assignedCases.length : undefined}
           />
           <TabButton 
+            active={activeTab === 'search'} 
+            onClick={() => setActiveTab('search')}
+            icon={<Search size={20} />}
+            label="Search Victims"
+            description="Find & view directory profiles"
+          />
+          <TabButton 
             active={activeTab === 'history'} 
             onClick={() => setActiveTab('history')}
             icon={<Calendar size={20} />}
-            label="History"
-            description="Recent registrations"
+            label="My Registrations"
+            description="Records you registered"
           />
         </div>
 
@@ -454,6 +466,124 @@ export default function VolunteerDashboard() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'search' && (
+            <motion.div
+              key="search"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="space-y-6"
+            >
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 space-y-6">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Victim Profile Directory</h2>
+                  <p className="text-slate-500 font-bold text-xs mt-1">Verify credentials, locations, active status, and detailed file parameters.</p>
+                </div>
+
+                {/* Filters Row */}
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input 
+                      type="text" 
+                      placeholder="Search by full name, ID number, or phone number..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-red-500 font-bold transition-all placeholder:text-slate-300"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest hidden sm:inline">County</span>
+                    <select 
+                      value={filterCounty}
+                      onChange={(e) => setFilterCounty(e.target.value)}
+                      className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-600 outline-none focus:ring-2 focus:ring-red-500"
+                    >
+                      <option value="All Counties">All Counties</option>
+                      {KENYAN_COUNTIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Search Results Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+                  {(() => {
+                    let filtered = victims;
+                    if (filterCounty !== 'All Counties') {
+                      filtered = filtered.filter(v => v.county === filterCounty);
+                    }
+                    if (searchQuery.trim().length > 0) {
+                      const q = searchQuery.toLowerCase();
+                      filtered = filtered.filter(v => 
+                        (v.full_name || '').toLowerCase().includes(q) ||
+                        (v.national_id || '').toLowerCase().includes(q) ||
+                        (v.phone_number || '').toLowerCase().includes(q)
+                      );
+                    }
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="col-span-full py-12 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                          No victim profiles found matching your filters.
+                        </div>
+                      );
+                    }
+
+                    return filtered.map(v => (
+                      <motion.div 
+                        key={v.id}
+                        layout
+                        className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm hover:shadow-md hover:border-slate-300 transition-all space-y-4 relative group"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center font-black">
+                              {v.full_name?.[0]?.toUpperCase() || 'V'}
+                            </div>
+                            <div>
+                              <h4 className="font-black text-slate-950 group-hover:text-red-600 transition-colors">{v.full_name}</h4>
+                              <p className="text-xs font-semibold text-slate-400">{v.county || 'Unspecified County'}</p>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-100 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                            Registered
+                          </span>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3 space-y-2 text-sm">
+                          <div className="flex justify-between font-medium">
+                            <span className="text-slate-400">National ID:</span>
+                            <span className="text-slate-800 font-mono font-bold">{v.national_id || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between font-medium">
+                            <span className="text-slate-400">Phone:</span>
+                            <span className="text-slate-800 font-bold">{v.phone_number || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between font-medium">
+                            <span className="text-slate-400">Registered:</span>
+                            <span className="text-slate-400 text-xs font-bold text-right">
+                              {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button 
+                          type="button"
+                          onClick={() => setSelectedVictim(v)}
+                          className="w-full bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 text-slate-700 font-black py-2.5 rounded-2xl transition-all text-xs flex items-center justify-center gap-2"
+                        >
+                          <Search size={14} />
+                          Inspect Full Information
+                        </button>
+                      </motion.div>
+                    ));
+                  })()}
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -558,6 +688,97 @@ export default function VolunteerDashboard() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View Selected Victim Dossier Modal */}
+      <AnimatePresence>
+        {selectedVictim && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white w-full max-w-lg rounded-3xl shadow-xl border border-slate-200 overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Victim Profile Dossier</h3>
+                  <p className="text-xs text-slate-400 font-bold">Comprehensive field validation record</p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setSelectedVictim(null)}
+                  className="p-1.5 bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl border border-slate-200 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Dossier Header Cards */}
+                <div className="flex items-center gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                  <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center text-xl font-black">
+                    {selectedVictim.full_name?.[0]?.toUpperCase() || 'V'}
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-black text-slate-900">{selectedVictim.full_name}</h4>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 text-green-700 text-[10px] font-black uppercase tracking-widest rounded-full mt-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      Active Record
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dossier Specifications List */}
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">National Identification</p>
+                      <p className="text-sm font-bold text-slate-800">{selectedVictim.national_id || 'N/A'}</p>
+                    </div>
+                    <CreditCard className="text-slate-300" size={20} />
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Contact Mobile Line</p>
+                      <span className="text-sm font-bold text-slate-800">{selectedVictim.phone_number || 'N/A'}</span>
+                    </div>
+                    <Phone className="text-slate-300" size={20} />
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">County Ingress</p>
+                      <p className="text-sm font-bold text-slate-800">{selectedVictim.county || 'N/A'}</p>
+                    </div>
+                    <MapPin className="text-slate-300" size={20} />
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Registration Date Timestamp</p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {new Date(selectedVictim.created_at).toLocaleString([], { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <Calendar className="text-slate-300" size={20} />
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVictim(null)}
+                    className="w-full py-3 bg-red-600 hover:bg-red-700 hover:shadow-lg hover:shadow-red-200 transition-all text-white font-black rounded-xl text-sm cursor-pointer"
+                  >
+                    Dossier Checked & Verified
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

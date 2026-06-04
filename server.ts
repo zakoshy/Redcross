@@ -15,15 +15,16 @@ const supabase = createClient(
 );
 
 let atSms: any = null;
-let twilioClient: any = null;
 
 function getAtSms() {
   if (!atSms) {
     try {
       const africastalking = require("africastalking");
+      const username = process.env.AFRICA_S_TALKING_USERNAME || 'sandbox';
+      console.log(`Initializing Africa's Talking with username: "${username}"`);
       const at = africastalking({
         apiKey: process.env.AFRICA_S_TALKING_API_KEY || '',
-        username: process.env.AFRICA_S_TALKING_USERNAME || 'sandbox'
+        username: username
       });
       atSms = at.SMS;
     } catch (error) {
@@ -31,18 +32,6 @@ function getAtSms() {
     }
   }
   return atSms;
-}
-
-function getTwilioClient() {
-  if (!twilioClient && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    try {
-      const twilio = require("twilio");
-      twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    } catch (error) {
-      console.error("Failed to initialize Twilio:", error);
-    }
-  }
-  return twilioClient;
 }
 
 async function startServer() {
@@ -120,37 +109,82 @@ KES 2,500 added to your wallet.`;
   app.post("/api/sms", async (req, res) => {
     const { to, message } = req.body;
     
-    // Try Africa's Talking first
-    if (process.env.AFRICA_S_TALKING_API_KEY) {
-      try {
-        const sms = getAtSms();
-        if (sms) {
-          const result = await sms.send({ to, message });
-          return res.json({ success: true, provider: 'africastalking', result });
-        }
-      } catch (error) {
-        console.error("Africa's Talking SMS Error:", error);
-        // If AT fails, we fall through to Twilio if available
-      }
+    // Check if configuration exists
+    if (!process.env.AFRICA_S_TALKING_API_KEY) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Africa's Talking SMS API is not configured (missing AFRICA_S_TALKING_API_KEY)." 
+      });
     }
 
-    // Try Twilio as fallback
-    const client = getTwilioClient();
-    if (client && process.env.TWILIO_PHONE_NUMBER) {
-      try {
-        const result = await client.messages.create({
-          body: message,
-          to: to,
-          from: process.env.TWILIO_PHONE_NUMBER
+    try {
+      const sms = getAtSms();
+      if (!sms) {
+        return res.status(500).json({ 
+          success: false, 
+          error: "Failed to initialize Africa's Talking SMS library." 
         });
-        return res.json({ success: true, provider: 'twilio', result });
-      } catch (error) {
-        console.error("Twilio SMS Error:", error);
-        return res.status(500).json({ success: false, error: "Both SMS providers failed or were not configured correctly." });
       }
-    }
 
-    res.status(400).json({ success: false, error: "No SMS provider configured." });
+      const sendOptions: any = { to, message };
+      const username = process.env.AFRICA_S_TALKING_USERNAME || 'sandbox';
+      const isSandbox = username.toLowerCase() === 'sandbox';
+
+      // In sandbox mode, custom Sender IDs are not allowed unless configured, so default to standard routing
+      if (process.env.AFRICA_S_TALKING_SENDER_ID && !isSandbox) {
+        sendOptions.from = process.env.AFRICA_S_TALKING_SENDER_ID;
+        console.log(`Sending SMS via AT with custom Sender ID: "${process.env.AFRICA_S_TALKING_SENDER_ID}"`);
+      } else {
+        console.log("Sending SMS via AT with default route or shared shortcode (Sender ID bypassed for Sandbox)");
+      }
+
+      console.log(`Calling Africa's Talking sms.send to: "${to}"`);
+      const result = await sms.send(sendOptions);
+      console.log("Africa's Talking Raw Response Payload:", JSON.stringify(result));
+
+      // Inspect individual recipient status to verify delivery acceptance
+      let deliveryFailure = null;
+      if (result && result.SMSMessageData && result.SMSMessageData.Recipients && result.SMSMessageData.Recipients.length > 0) {
+        const firstRecipient = result.SMSMessageData.Recipients[0];
+        const status = firstRecipient.status;
+        const statusCode = firstRecipient.statusCode;
+
+        // Common success code for AT is 101. If not success, parse reason
+        if (status !== "Success" && statusCode !== 101) {
+          let explanation = `Delivery Status: "${status}" (Code ${statusCode}). `;
+          if (statusCode === 402) {
+            explanation += "This means your Africa's Talking Bulk SMS account has INSUFFICIENT BALANCE. Please top up your account balance.";
+          } else if (statusCode === 403) {
+            explanation += "This number is unauthorized or rejected. Note that on the Africa's Talking Sandbox environment, you can ONLY send messages to phone numbers registered in your Sandbox Teams list!";
+          } else if (statusCode === 401) {
+            explanation += "Incorrect or invalid credentials.";
+          } else if (status === "InvalidPhoneNumber") {
+            explanation += "The phone number format is invalid. Make sure it is in international format (e.g. +254712345678).";
+          } else {
+            explanation += "Please verify your account balance, sender ID whitelist registration, and that phone number is active.";
+          }
+          deliveryFailure = explanation;
+        }
+      } else {
+        deliveryFailure = "Did not receive empty or valid recipient tracking info from Africa's Talking API.";
+      }
+
+      if (deliveryFailure) {
+        console.error("SMS Delivery Failure:", deliveryFailure);
+        return res.status(400).json({ success: false, error: deliveryFailure, result });
+      }
+
+      console.log("SMS Sent Successfully via Africa's Talking Client!");
+      return res.json({ success: true, provider: 'africastalking', result });
+
+    } catch (error: any) {
+      console.error("Africa's Talking SMS API Execution Error:", error);
+      const errMessage = error.message || error;
+      return res.status(500).json({ 
+        success: false, 
+        error: `Africa's Talking API Error: "${errMessage}"` 
+      });
+    }
   });
 
   // Vite middleware for development

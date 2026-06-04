@@ -14,6 +14,7 @@ export default function MerchantDashboard() {
   const [amount, setAmount] = useState(500);
   const [result, setResult] = useState<{ type: 'success' | 'error', message: string, amount?: number } | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
 
   useEffect(() => {
     fetchWallet();
@@ -106,6 +107,60 @@ export default function MerchantDashboard() {
     }
   }
 
+  async function handleManualRedeem() {
+    if (!voucherCodeInput.trim()) {
+      setResult({ type: 'error', message: 'Please enter a valid Voucher Code, National ID or Phone Number.' });
+      return;
+    }
+    setRedeeming(true);
+    setResult(null);
+
+    try {
+      // 1. Securely find the beneficiary profile matching the voucher code / national ID / phone number
+      const { data: victim, error: lookupError } = await supabase.rpc('find_victim_profile', {
+        p_identifier: voucherCodeInput.trim()
+      });
+
+      if (lookupError) throw lookupError;
+      if (!victim || victim.length === 0) {
+        throw new Error('Voucher or Beneficiary not found with the provided identifier.');
+      }
+
+      const victimId = victim[0].id;
+
+      // 2. Process aid purchase using RPC
+      const idempotencyKey = crypto.randomUUID();
+      const { data, error } = await supabase.rpc('process_aid_purchase', {
+        victim_profile_id: victimId,
+        merchant_profile_id: user?.id,
+        purchase_amount: amount,
+        idempotency_key: idempotencyKey
+      });
+
+      if (error) throw error;
+
+      if (data === 'Transaction successful') {
+        setResult({ 
+          type: 'success', 
+          message: `Payment from ${victim[0].full_name || 'Beneficiary'} processed successfully!`,
+          amount: amount
+        });
+        setVoucherCodeInput('');
+        fetchWallet();
+        fetchTransactions();
+      } else {
+        setResult({ 
+          type: 'error', 
+          message: data || 'Transaction failed.' 
+        });
+      }
+    } catch (error: any) {
+      setResult({ type: 'error', message: error.message });
+    } finally {
+      setRedeeming(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans">
       {/* Header */}
@@ -160,7 +215,7 @@ export default function MerchantDashboard() {
             >
               <div className="text-center space-y-2">
                 <h3 className="text-2xl font-black text-white">Process Payment</h3>
-                <p className="text-slate-500 font-medium">Enter amount and scan victim's QR code</p>
+                <p className="text-slate-500 font-medium">Enter amount and scan victim's QR code or type voucher code</p>
               </div>
 
               <div className="space-y-6">
@@ -177,15 +232,44 @@ export default function MerchantDashboard() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setScanning(true)}
-                  className="w-full aspect-video bg-slate-900 border-2 border-dashed border-slate-800 rounded-[2.5rem] flex flex-col items-center justify-center gap-4 hover:border-blue-600/50 hover:bg-blue-600/5 transition-all group"
-                >
-                  <div className="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Scan size={32} className="text-blue-500" />
+                <div className="grid grid-cols-1 gap-4">
+                  <button
+                    onClick={() => setScanning(true)}
+                    className="w-full py-6 bg-slate-900 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-900/5 rounded-2xl flex items-center justify-center gap-3 transition-all group"
+                  >
+                    <Scan size={20} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm font-black text-slate-300 group-hover:text-blue-500 transition-colors">Scan Beneficiary QR</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4 pt-4">
+                  <div className="relative flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-850"></div>
+                    </div>
+                    <span className="relative px-3 bg-slate-950 text-[10px] font-black text-slate-600 uppercase tracking-widest">or Redeem Manually</span>
                   </div>
-                  <span className="text-lg font-black text-slate-400 group-hover:text-blue-500 transition-colors">Start QR Scanner</span>
-                </button>
+
+                  <div className="space-y-4 bg-slate-900/30 p-5 rounded-2xl border border-slate-850">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest ml-2">Voucher Code / National ID / Phone</label>
+                      <input
+                        type="text"
+                        value={voucherCodeInput}
+                        onChange={(e) => setVoucherCodeInput(e.target.value)}
+                        placeholder="e.g. 5A9F2D"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-blue-600 rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all text-white placeholder:text-slate-700 text-center uppercase"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleManualRedeem}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition-all shadow-md shadow-blue-900/10 flex items-center justify-center gap-2 text-sm"
+                    >
+                      Redeem with Code
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Recent Activity */}

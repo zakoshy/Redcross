@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'analytics' | 'users' | 'campaigns' | 'triage';
+type Tab = 'analytics' | 'users' | 'campaigns' | 'triage' | 'disbursements';
 
 export default function AdminDashboard() {
   const { signOut, user } = useAuth();
@@ -174,12 +174,13 @@ export default function AdminDashboard() {
 
     try {
       const chatbotUrl = `${window.location.origin}/chat`;
+      const voucherCode = profile.id.slice(-6).toUpperCase();
       const response = await fetch('/api/sms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: profile.phone_number,
-          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Redeem KES ${campaign.amount} at a nearby merchant. Dial *384*34091# to check balance or chat with us here: ${chatbotUrl}`
+          message: `Hello ${profile.full_name}, your relief voucher for ${campaign.name} is ready. Voucher Code: ${voucherCode}. Redeem KES ${campaign.amount} by presenting your code or scanning your QR at any authorized merchant. Dial *384*34091# or visit: ${chatbotUrl}`
         })
       });
       const result = await response.json();
@@ -222,6 +223,7 @@ export default function AdminDashboard() {
       if (campaign) {
         victims.forEach(v => sendVoucherSMS(v, campaign));
       }
+      fetchLedger();
     }
   }
 
@@ -314,6 +316,12 @@ export default function AdminDashboard() {
             active={activeTab === 'triage'} 
             badge={stats.highRiskCases > 0 ? stats.highRiskCases : undefined}
             onClick={() => { setActiveTab('triage'); setIsSidebarOpen(false); }} 
+          />
+          <SidebarLink 
+            icon={<Wallet size={20} />} 
+            label="Aid Disbursements" 
+            active={activeTab === 'disbursements'} 
+            onClick={() => { setActiveTab('disbursements'); setIsSidebarOpen(false); }} 
           />
         </nav>
 
@@ -819,6 +827,237 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </motion.div>
+          )}
+          {activeTab === 'disbursements' && (
+            <motion.div 
+              key="disbursements"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              {/* Highlight Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Aid Disbursed</p>
+                    <p className="text-2xl font-black text-slate-900">KES {(ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT').reduce((acc, l) => acc + Math.abs(l.amount), 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
+                    <TrendingUp size={24} />
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Impact (Unique Recipients)</p>
+                    <p className="text-2xl font-black text-slate-900">
+                      {new Set(ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT').map(l => l.profile_id)).size} Victims
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+                    <Users size={24} />
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Transactions</p>
+                    <p className="text-2xl font-black text-slate-900">
+                      {ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT').length} Allocations
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center">
+                    <CheckCircle2 size={24} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Disbursement Ledger Table Wrapper */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold">Relief Allocation Ledger</h3>
+                    <p className="text-sm text-slate-500 font-medium">Audit logs of all successful direct aid disbursements</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    {/* Search inside disbursements ledger */}
+                    <div className="relative flex-1 sm:w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Search recipient or campaign..." 
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500 font-semibold text-slate-900" 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Recipient</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Campaign</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Amount</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Allocation Date</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const disbursementList = ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT');
+                        const searchFiltered = disbursementList.filter(entry => {
+                          const recipient = profiles.find(p => p.id === entry.profile_id);
+                          const campaign = campaigns.find(c => c.id === entry.campaign_id);
+                          
+                          const searchStr = (searchTerm || '').toLowerCase();
+                          return (
+                            (recipient?.full_name?.toLowerCase() || '').includes(searchStr) ||
+                            (recipient?.phone_number?.toLowerCase() || '').includes(searchStr) ||
+                            (recipient?.email?.toLowerCase() || '').includes(searchStr) ||
+                            (recipient?.county?.toLowerCase() || '').includes(searchStr) ||
+                            (campaign?.name?.toLowerCase() || '').includes(searchStr) ||
+                            (entry.description?.toLowerCase() || '').includes(searchStr)
+                          );
+                        });
+
+                        const indexLast = currentPage * itemsPerPage;
+                        const indexFirst = indexLast - itemsPerPage;
+                        const paginatedDisbursements = searchFiltered.slice(indexFirst, indexLast);
+
+                        if (paginatedDisbursements.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">
+                                No allocation records found.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return (
+                          <>
+                            {paginatedDisbursements.map((entry) => {
+                              const recipient = profiles.find(p => p.id === entry.profile_id);
+                              const campaign = campaigns.find(c => c.id === entry.campaign_id);
+
+                              return (
+                                <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500 text-sm">
+                                        {recipient?.full_name?.[0] || 'V'}
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-slate-900">{recipient?.full_name || 'Unknown Recipient'}</p>
+                                        <p className="text-xs text-slate-500 font-medium">{recipient?.phone_number || recipient?.email || 'N/A'}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <p className="font-bold text-slate-700 text-sm">{campaign?.name || 'Relief Aid'}</p>
+                                    <p className="text-xs text-slate-400 font-semibold">{entry.description || 'Disbursement'}</p>
+                                  </td>
+                                  <td className="px-6 py-4 text-sm font-bold text-slate-600">
+                                    {recipient?.county || 'N/A'}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <span className="font-black text-green-600 text-sm">
+                                      +KES {Math.abs(entry.amount).toLocaleString()}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                    {new Date(entry.created_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <span className="px-3 py-1 bg-green-100 text-green-700 border border-green-200 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 w-fit">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                      Credited
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Ledger Pagination Controls */}
+                {(() => {
+                  const disbursementList = ledger.filter(l => l.transaction_type === 'AID_DISBURSEMENT');
+                  const searchFiltered = disbursementList.filter(entry => {
+                    const recipient = profiles.find(p => p.id === entry.profile_id);
+                    const campaign = campaigns.find(c => c.id === entry.campaign_id);
+                    
+                    const searchStr = (searchTerm || '').toLowerCase();
+                    return (
+                      (recipient?.full_name?.toLowerCase() || '').includes(searchStr) ||
+                      (recipient?.phone_number?.toLowerCase() || '').includes(searchStr) ||
+                      (recipient?.email?.toLowerCase() || '').includes(searchStr) ||
+                      (recipient?.county?.toLowerCase() || '').includes(searchStr) ||
+                      (campaign?.name?.toLowerCase() || '').includes(searchStr) ||
+                      (entry.description?.toLowerCase() || '').includes(searchStr)
+                    );
+                  });
+                  const totalLedgerPages = Math.ceil(searchFiltered.length / itemsPerPage);
+                  const indexLast = currentPage * itemsPerPage;
+                  const indexFirst = indexLast - itemsPerPage;
+
+                  if (totalLedgerPages <= 1) return null;
+
+                  return (
+                    <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                      <p className="text-sm font-medium text-slate-500">
+                        Showing <span className="text-slate-900">{indexFirst + 1}</span> to <span className="text-slate-900">{Math.min(indexLast, searchFiltered.length)}</span> of <span className="text-slate-900">{searchFiltered.length}</span> allocations
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          disabled={currentPage === 1}
+                          type="button"
+                          onClick={() => setCurrentPage(prev => prev - 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Previous
+                        </button>
+                        {[...Array(totalLedgerPages)].map((_, i) => (
+                          <button
+                            key={i + 1}
+                            type="button"
+                            onClick={() => setCurrentPage(i + 1)}
+                            className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
+                              currentPage === i + 1 
+                                ? 'bg-red-600 text-white shadow-lg shadow-red-200' 
+                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                        <button 
+                          disabled={currentPage === totalLedgerPages}
+                          type="button"
+                          onClick={() => setCurrentPage(prev => prev + 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             </motion.div>
           )}
