@@ -37,6 +37,13 @@ export default function AdminDashboard() {
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [selectedCounties, setSelectedCounties] = useState<Record<string, string>>({});
+  
+  // User Editing States
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [editProfileForm, setEditProfileForm] = useState({
+    fullName: '', email: '', role: 'volunteer' as UserRole, county: '', phone_number: '', status: 'active' as 'active' | 'pending' | 'suspended', national_id: ''
+  });
+  const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -117,6 +124,43 @@ export default function AdminDashboard() {
         message: `Account created for ${newUser.email}. Please ask them to check their email for activation.` 
       });
       setNewUser({ email: '', password: '', fullName: '', nationalId: '', phone: '+254', county: '', role: 'volunteer' });
+      fetchProfiles();
+    }
+  }
+
+  async function handleUpdateProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingProfile) return;
+    setStatus(null);
+
+    const { error } = await supabase.from('profiles').update({
+      full_name: editProfileForm.fullName,
+      email: editProfileForm.email,
+      role: editProfileForm.role,
+      county: editProfileForm.county,
+      phone_number: editProfileForm.phone_number,
+      national_id: editProfileForm.national_id,
+      status: editProfileForm.status
+    }).eq('id', editingProfile.id);
+
+    if (error) {
+      setStatus({ type: 'error', message: error.message });
+    } else {
+      setStatus({ type: 'success', message: `User profile updated successfully.` });
+      setEditingProfile(null);
+      fetchProfiles();
+    }
+  }
+
+  async function handleDeleteProfile(profileId: string) {
+    setStatus(null);
+    const { error } = await supabase.from('profiles').delete().eq('id', profileId);
+
+    if (error) {
+      setStatus({ type: 'error', message: error.message });
+    } else {
+      setStatus({ type: 'success', message: `User deleted successfully.` });
+      setDeleteProfileId(null);
       fetchProfiles();
     }
   }
@@ -580,6 +624,7 @@ export default function AdminDashboard() {
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">County</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Contact</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -622,6 +667,38 @@ export default function AdminDashboard() {
                             </td>
                             <td className="px-6 py-4">
                               <p className="text-sm font-medium text-slate-600">{p.phone_number || 'No phone'}</p>
+                              <p className="text-xs text-slate-400">{p.national_id ? `ID: ${p.national_id}` : ''}</p>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingProfile(p);
+                                    setEditProfileForm({
+                                      fullName: p.full_name || '',
+                                      email: p.email || '',
+                                      role: p.role,
+                                      county: p.county || '',
+                                      phone_number: p.phone_number || '',
+                                      status: p.status || 'active',
+                                      national_id: p.national_id || ''
+                                    });
+                                  }}
+                                  className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                  title="Edit User"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                {p.id !== user?.id && (
+                                  <button
+                                    onClick={() => setDeleteProfileId(p.id)}
+                                    className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                    title="Delete User"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1161,6 +1238,156 @@ export default function AdminDashboard() {
                     className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-200"
                   >
                     Delete
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {editingProfile && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[105] flex items-center justify-center p-4 overflow-y-auto"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-black text-slate-900">Edit User Profile</h3>
+                  <button 
+                    onClick={() => setEditingProfile(null)}
+                    className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900 transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <form onSubmit={handleUpdateProfile} className="space-y-4">
+                  <Input 
+                    label="Full Name" 
+                    value={editProfileForm.fullName} 
+                    onChange={v => setEditProfileForm({...editProfileForm, fullName: v})} 
+                    required 
+                  />
+                  <Input 
+                    label="Email" 
+                    value={editProfileForm.email} 
+                    onChange={v => setEditProfileForm({...editProfileForm, email: v})} 
+                    required 
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input 
+                      label="National ID" 
+                      value={editProfileForm.national_id} 
+                      onChange={v => setEditProfileForm({...editProfileForm, national_id: v})} 
+                    />
+                    <Input 
+                      label="Phone (+254...)" 
+                      value={editProfileForm.phone_number} 
+                      onChange={v => setEditProfileForm({...editProfileForm, phone_number: v})} 
+                    />
+                  </div>
+                  <Input 
+                    label="County" 
+                    value={editProfileForm.county} 
+                    onChange={v => setEditProfileForm({...editProfileForm, county: v})} 
+                    placeholder="Type or select county..." 
+                    list="edit-kenyan-counties"
+                  />
+                  <datalist id="edit-kenyan-counties">
+                    {KENYAN_COUNTIES.map(c => <option key={c} value={c} />)}
+                  </datalist>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Role</label>
+                      <select 
+                        value={editProfileForm.role}
+                        onChange={e => setEditProfileForm({...editProfileForm, role: e.target.value as UserRole})}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold"
+                      >
+                        <option value="victim">Victim</option>
+                        <option value="volunteer">Volunteer</option>
+                        <option value="merchant">Merchant</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Status</label>
+                      <select 
+                        value={editProfileForm.status}
+                        onChange={e => setEditProfileForm({...editProfileForm, status: e.target.value as any})}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold"
+                      >
+                        <option value="active">Active</option>
+                        <option value="pending">Inactive (Pending)</option>
+                        <option value="suspended">Suspended</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button 
+                      type="button"
+                      onClick={() => setEditingProfile(null)}
+                      className="flex-1 px-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2"
+                    >
+                      <Save size={16} />
+                      Save Changes
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {deleteProfileId && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[105] flex items-center justify-center p-4"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center"
+              >
+                <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="text-red-600" size={32} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mb-2">Delete User Profile?</h3>
+                <p className="text-slate-500 font-medium mb-8">
+                  Are you sure you want to delete this user? All associated database associations (including wallets and triage sessions) will be deleted because of cascade constraints. This action is irreversible.
+                </p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setDeleteProfileId(null)}
+                    className="flex-1 px-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteProfile(deleteProfileId)}
+                    className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+                  >
+                    Delete User
                   </button>
                 </div>
               </motion.div>
