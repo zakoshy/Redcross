@@ -23,24 +23,32 @@ function getSupabase() {
 
 let atSms: any = null;
 let twilioClient: any = null;
+let lastUsedApiKey = "";
+let lastUsedUsername = "";
 
-function getAtSms() {
-  if (!atSms) {
-    try {
-      const africastalking = require("africastalking");
-      const username = process.env.AFRICAS_TALKING_USERNAME || process.env.AFRICA_S_TALKING_USERNAME || 'sandbox';
-      const apiKey = process.env.AFRICAS_TALKING_API_KEY || process.env.AFRICA_S_TALKING_API_KEY || '';
-      console.log(`Initializing Africa's Talking with username: "${username}" (API Key present: ${!!apiKey})`);
-      const at = africastalking({
-        apiKey: apiKey,
-        username: username
-      });
-      atSms = at.SMS;
-    } catch (error) {
-      console.error("Failed to initialize Africa's Talking:", error);
-    }
+function getAtSms(customApiKey?: string, customUsername?: string) {
+  const username = customUsername || process.env.AFRICAS_TALKING_USERNAME || process.env.AFRICA_S_TALKING_USERNAME || 'sandbox';
+  const apiKey = customApiKey || process.env.AFRICAS_TALKING_API_KEY || process.env.AFRICA_S_TALKING_API_KEY || '';
+
+  if (atSms && username === lastUsedUsername && apiKey === lastUsedApiKey) {
+    return atSms;
   }
-  return atSms;
+
+  try {
+    const africastalking = require("africastalking");
+    console.log(`[SMS API] Constructing Africa's Talking SMS instance with username: "${username}" (API Key size: ${apiKey ? apiKey.length : 0})`);
+    const at = africastalking({
+      apiKey: apiKey,
+      username: username
+    });
+    atSms = at.SMS;
+    lastUsedApiKey = apiKey;
+    lastUsedUsername = username;
+    return atSms;
+  } catch (error) {
+    console.error("Failed to initialize Africa's Talking Client:", error);
+    return null;
+  }
 }
 
 function getTwilioClient() {
@@ -122,37 +130,53 @@ KES 2,500 added to your wallet.`;
   res.send(response);
 });
 
+export function normalizePhone(phone: string): string {
+  const trimmed = (phone || "").trim();
+  // Remove all spaces, tabs, and other whitespace characters from phone numbers.
+  const cleaned = trimmed.replace(/\s+/g, '');
+  
+  // Preserve the leading + if present.
+  let normalized = cleaned;
+  
+  // If the number starts with 07, convert it to +2547...
+  if (cleaned.startsWith('07')) {
+    normalized = '+254' + cleaned.slice(1);
+  } else if (cleaned.startsWith('254') && !cleaned.startsWith('+')) {
+    // If the number starts with 254, convert it to +254...
+    normalized = '+' + cleaned;
+  }
+  
+  // Add logging to show: Original phone number, Normalized phone number
+  console.log(`[normalizePhone] Original: "${phone}" => Normalized: "${normalized}"`);
+  return normalized;
+}
+
 // SMS Endpoint (Proxy for frontend)
 app.post("/api/sms", async (req, res) => {
   try {
-    const { to, message } = req.body;
+    const { to, message, apiKey, username, senderId } = req.body;
     
-    // Normalize phone format to international standard (+254...)
-    let formattedTo = (to || "").trim();
-    if (formattedTo.startsWith("0")) {
-      formattedTo = "+254" + formattedTo.slice(1);
-    } else if (formattedTo.startsWith("254") && !formattedTo.startsWith("+")) {
-      formattedTo = "+" + formattedTo;
-    } else if (formattedTo && !formattedTo.startsWith("+")) {
-      formattedTo = "+" + formattedTo;
-    }
+    // Normalize phone format using the reusable normalizePhone function immediately before sending
+    const formattedTo = normalizePhone(to);
 
     // Try Africa's Talking first
-    const atApiKey = process.env.AFRICAS_TALKING_API_KEY || process.env.AFRICA_S_TALKING_API_KEY;
-    if (atApiKey) {
+    const finalApiKey = apiKey || process.env.AFRICAS_TALKING_API_KEY || process.env.AFRICA_S_TALKING_API_KEY;
+    const finalUsername = username || process.env.AFRICAS_TALKING_USERNAME || process.env.AFRICA_S_TALKING_USERNAME || 'sandbox';
+
+    if (finalApiKey) {
       try {
-        const sms = getAtSms();
+        const sms = getAtSms(apiKey, username);
         if (sms) {
           const sendOptions: any = { to: formattedTo, message };
-          const atSenderId = process.env.AFRICAS_TALKING_SENDER_ID || process.env.AFRICA_S_TALKING_SENDER_ID;
-          if (atSenderId) {
-            sendOptions.from = atSenderId;
-            console.log(`Sending SMS via AT with custom Sender ID: "${atSenderId}"`);
+          const finalSenderId = senderId || process.env.AFRICAS_TALKING_SENDER_ID || process.env.AFRICA_S_TALKING_SENDER_ID;
+          if (finalSenderId) {
+            sendOptions.from = finalSenderId;
+            console.log(`Sending SMS via AT with custom Sender ID: "${finalSenderId}"`);
           } else {
             console.log("Sending SMS via AT with default route or shared shortcode");
           }
 
-          console.log(`Calling Africa's Talking sms.send to: "${formattedTo}"`);
+          console.log(`Calling Africa's Talking sms.send to: "${formattedTo}" using username: "${finalUsername}"`);
           const result = await sms.send(sendOptions);
           console.log("Africa's Talking Raw Response Payload:", JSON.stringify(result));
 
@@ -168,13 +192,13 @@ app.post("/api/sms", async (req, res) => {
             if (status !== "Success" && statusCode !== 101) {
               let explanation = `Delivery Status: "${status}" (Code ${statusCode}). `;
               if (statusCode === 402) {
-                explanation += "This means your Africa's Talking Bulk SMS account has INSUFFICIENT BALANCE. Please top up your account balance.";
+                explanation += "Insufficient Balance on your Africa's Talking Bulk SMS account. Please top up your account balance.";
               } else if (statusCode === 403) {
-                explanation += "This number is unauthorized or rejected. Note that on the Africa's Talking Sandbox environment, you can ONLY send messages to phone numbers registered in your Sandbox Teams list!";
+                explanation += "Unauthorized or rejected. In Sandbox mode, you can ONLY send messages to phone numbers whitelisted/registered in your Sandbox Teams list!";
               } else if (statusCode === 401) {
-                explanation += "Incorrect or invalid credentials.";
+                explanation += "Incorrect or invalid Africa's Talking credentials (API Key or Username).";
               } else if (status === "InvalidPhoneNumber") {
-                explanation += "The phone number format is invalid. Make sure it is in international format (e.g. +254712345678).";
+                explanation += "Invalid phone number format. Ensure the number is active and in (+254...) format.";
               } else {
                 explanation += "Please verify your account balance, sender ID whitelist registration, and that the phone number is active.";
               }
@@ -186,12 +210,15 @@ app.post("/api/sms", async (req, res) => {
 
           if (deliveryFailure) {
             console.error("SMS Delivery Failure:", deliveryFailure);
-            const isSandbox = (process.env.AFRICAS_TALKING_USERNAME || process.env.AFRICA_S_TALKING_USERNAME || 'sandbox').toLowerCase() === 'sandbox';
-            if (isSandbox) {
-              console.log("Allowing sandbox warning to resolve as success so the admin ui flows smoothly.");
-              return res.json({ success: true, provider: 'africastalking', warning: deliveryFailure, result });
-            }
-            return res.status(400).json({ success: false, error: deliveryFailure, result });
+            const isSandbox = finalUsername.toLowerCase() === 'sandbox';
+            return res.json({ 
+              success: false, 
+              error: deliveryFailure, 
+              warning: deliveryFailure,
+              isSandbox: isSandbox,
+              provider: 'africastalking', 
+              result 
+            });
           }
 
           console.log("SMS Sent Successfully via Africa's Talking Client!");
@@ -199,7 +226,11 @@ app.post("/api/sms", async (req, res) => {
         }
       } catch (error: any) {
         console.error("Africa's Talking SMS API Execution Error:", error);
-        // Fallthrough index or throw to fallback provider
+        return res.json({ 
+          success: false, 
+          error: `Africa's Talking Request Failed: ${error.message || error}`, 
+          provider: 'africastalking' 
+        });
       }
     }
 
