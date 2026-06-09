@@ -32,6 +32,7 @@ export interface LedgerEntry {
   id: number;
   wallet_id: string;
   campaign_id?: string;
+  profile_id?: string;
   amount: number;
   transaction_type: 'AID_DISBURSEMENT' | 'PURCHASE' | 'FUNDS_RETURN';
   idempotency_key: string;

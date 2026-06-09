@@ -169,6 +169,9 @@ create policy "view own ledger" on public.ledger for select using (profile_id = 
 drop policy if exists "admin view ledger" on public.ledger;
 create policy "admin view ledger" on public.ledger for select using (public.check_is_admin());
 
+drop policy if exists "volunteer view ledger" on public.ledger;
+create policy "volunteer view ledger" on public.ledger for select using (public.check_is_volunteer());
+
 -- Triage Sessions
 drop policy if exists "admin manage triage" on public.triage_sessions;
 create policy "admin manage triage" on public.triage_sessions for all using (public.check_is_admin());

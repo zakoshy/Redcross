@@ -1,5 +1,6 @@
 {
   "name": "ReliefVoucher - Disaster Relief Management",
   "description": "A comprehensive system for managing disaster relief vouchers with Admin, Volunteer, and Merchant roles, featuring QR code redemption and victim registration.",
-  "requestFramePermissions": ["camera"]
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

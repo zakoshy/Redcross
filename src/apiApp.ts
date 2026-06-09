@@ -2,6 +2,7 @@ import express from "express";
 import { createRequire } from "module";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { GoogleGenAI } from "@google/genai";
 
 const require = createRequire(import.meta.url);
 dotenv.config();
@@ -257,6 +258,97 @@ app.post("/api/sms", async (req, res) => {
       success: false, 
       error: `API Internal Server Error: ${globalError.message || globalError}`,
       stack: globalError.stack 
+    });
+  }
+});
+
+let aiInstance: any = null;
+function getGenAI() {
+  if (!aiInstance) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY is missing. Please make sure to configure it in Settings > Secrets to enable this AI feature.");
+    }
+    aiInstance = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  }
+  return aiInstance;
+}
+
+// Gemini Psychological First Aid Chat proxy endpoint
+app.post("/api/pfa-chat", async (req, res) => {
+  try {
+    const { userMsg, profile, messages, lang } = req.body;
+    
+    if (!userMsg) {
+      return res.status(400).json({ error: "Missing required parameter: userMsg" });
+    }
+
+    const ai = getGenAI();
+    const formattedMessages = Array.isArray(messages) ? messages : [];
+    
+    const parseCounty = (cStr?: string) => {
+      if (!cStr) return 'Unspecified';
+      if (cStr.startsWith('Community Leader |')) {
+        return cStr.split('|')[1].trim();
+      }
+      return cStr;
+    };
+
+    const currentLang = lang === 'sw' ? 'Swahili' : 'English';
+
+    const prompt = `
+      You are a supportive, warm, and professional Psychological First Aid (PFA) counselor chatbot specifically helping humanitarian first responders (disaster volunteers, team leads, community heads, and admins). They face heavy stress, secondary trauma, and physical fatigue.
+      
+      User Selected Language: ${currentLang}. 
+      You MUST respond strictly in the requested language (${currentLang}). If the language is Swahili, write beautiful, supportive, and natural Swahili.
+
+      CRITICAL DATASET BOUNDARY (IMPORTANT):
+      You only respond to questions and issues specific to the Psychological First Aid (PFA) dataset / domain.
+      - Approved subjects: emotional distress, stress management, secondary trauma, grief, anxiety, fatigue, physical/mental burnout, coping mechanisms for disaster responders, grounding/breathing exercises, safety, active listening, or peer mental health.
+      - If the latest User Message ("${userMsg}") is NOT RELATED to mental health, emotional stress, coping with disasters, physical burnout, counseling, active listening, or responder wellness (for example: coding, math, general science, politics, general recipes, web searches, etc.), you MUST politely decline to answer.
+      - If declining, write the refusal response in the selected language (${currentLang}), explaining that your training dataset is strictly bounded to Psychological First Aid (PFA) and caring for the well-being of humanitarian responders.
+
+      Current User Profile:
+      - Name: ${profile?.full_name || 'Responder'}
+      - Role: ${profile?.role || 'Staff'} (marked as Community Leader if applicable)
+      - County: ${parseCounty(profile?.county)}
+
+      User Message: "${userMsg}"
+      
+      Conversation history:
+      ${formattedMessages.map((m: any) => `${m.role}: ${m.content}`).join('\n')}
+
+      Output requirements:
+      Return ONLY a JSON response in the following format:
+      {
+        "reply": "Write your supportive PFA feedback (or polite PFA-only refusal statement) in ${currentLang}. Validate feelings, or guide them through deep-breathing/grounding.",
+        "suicidal_assessment": "normal" or "distressed" or "suicidal",
+        "risk_score_0_to_1": 0.45
+      }
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const replyText = response.text || "{}";
+    res.json({ success: true, response: replyText });
+  } catch (error: any) {
+    console.error("[Gemini API Error] PFA Chat Bot failed:", error);
+    res.json({
+      success: false,
+      error: error.message || "An error occurred while connecting to the AI network."
     });
   }
 });

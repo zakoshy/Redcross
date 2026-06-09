@@ -1,29 +1,40 @@
 # 🌍 Relief & Psychological First Aid (PFA) Crisis System
 
-Welcome to the **Relief & Psychological First Aid Platform** — a highly optimized, professional web application designed to support disaster victims and coordinate relief disbursements with absolute precision and elegance.
+Welcome to the **Relief & Psychological First Aid Platform** — a highly optimized, enterprise-grade humanitarian coordination system designed to support vulnerable beneficiaries, facilitate rapid-response alerts with early community dispatch, and distribute financial voucher wallets securely.
 
-This system is built with lightweight, responsive frontend states, dark/light visual modes customized to mirror a premium financial/merchant dashboard, and integrated with Africa's Talking API for automated SMS notification support.
+This system features customized dark/light visual layouts, a server-side Gemini AI assessment engine, a Frappe-like configuration-driven custom fields builder, a secure, offline-first decentralized voucher wallet format, and an Africa's Talking SMS API gateway.
 
 ---
 
-## 🚀 Key System Capabilities
+## 🛠️ System Architecture & Core Modules
 
 ### 1. 🛡️ Admin Command Center (`/admin`)
-A premium management portal for disaster response command:
-*   **Aesthetic Alignment**: Follows a cohesive design theme, supporting high-contrast ambient dark mode or paper-white light theme.
-*   **Disaster Triage Index**: Highlights real-time psychological assessment metrics and tracks high-risk cases seamlessly.
-*   **Voucher Relief Campaigns**: Allows administrators to instantiate voucher initiatives (e.g., medical, food, shelter support packages) in one click.
-*   **Direct SMS Admin Key Settings**: Accessible via deep link format (`/admin#sms-settings`) to configure credentials completely separate from the clean day-to-day administrative panels.
+A premium management portal for disaster response command and financial oversight:
+*   **Aesthetic Metric Suite**: Supports real-time dashboards with visual analytics on disaster categories, budget distributions, and mental health trends.
+*   **Disaster Triage Index**: Highlights real-time psychological assessment scores and flags suicidal/high-risk cases for manual counselor interventions.
+*   **SMS Config & Simulator deep link**: Secured back corner panel accessible via deep link `admin#sms-settings`, allowing API key registration and testing without cluttered sidebar items.
 
-### 2. 🤖 Psychological First Aid (PFA) & Beneficiary Portal (`/chat`)
-An safe, compassionate terminal for victims/survivors:
-*   **Safe-Space AI Chatbot**: Powered by Google Gemini to perform empathetic assessments and psychological support.
-*   **Active Risk Classification**: Evaluates distressing patterns, establishing real-time triage risk percentages (0% to 100%) to instantly flag cases for human counselors inside Supabase.
-*   **Frictionless Credit Cards**: Provides visible balance codes with instant copy functionality (matching the Merchant Dashboard layout) to prove eligibility at physical redemption centers.
+### 2. 📋 Volunteer Command Platform & Frappe DocType customizer (`/volunteer`)
+Designed for on-the-ground volunteer coordinators registering beneficiaries:
+*   **Frappe-Like Configuration Engine**: Allows supervisors to add, edit, or delete custom registration fields (e.g., livestock count, household size, special medical flags) in real-time directly from the dashboard setting drawer. Zero code changes/re-compiles needed!
+*   **Incident and Disaster Reports**: Coordinates instant response dispatches triggered by regional community leaders.
 
-### 3. 🪙 Redemptive Merchant Portal (`/merchant`)
-Designed for retail partners handling regional supplies:
-*   An elegant, high-contrast dashboard to verify vouchers and execute immediate relief credits in local currency safely.
+### 3. 👥 Community Leader Onboarding & Emergency Alerts (`/register` & `/leader`)
+A secure, step-by-step validator for local ward champions:
+*   **Form-Structured Verification Questionnaire**: Requires detailed answers to diagnostic incident response questions (similar to a Google Form layout) before verifying candidates.
+*   **Early warning system**: Community leaders act as immediate ward dispatch coordinators. If a regional disaster occurs, they issue high-priority ward triggers alerting admins and volunteers to instantly deploy campaigns first-hand.
+
+### 4. 🪙 Decentralized Wallet-Redeemer Merchant Portal (`/merchant`)
+Refactored to mirror a secure, offline bearer wallet platform:
+*   **No Central Database Clutter**: Avoids writing granular beneficiary transaction row telemetry on centralized tables, operating as a secure bearer wallet system (highly durable and fast).
+*   **Remaining Balance Trackers**: Instantly calculates and reveals the exact credit balance remaining on a voucher wallet right after a purchase is made.
+*   **Safety Double-Redeem Interval Lock**: Blocks double redemption or replay attacks using an automatic 15-second system cooldown timer.
+*   **Safaricom B2B Payout Integration Guide**: Beautiful in-app instructions illustrating how cash transfers from the pre-funded Red Cross Escrow PayBill are instantly cleared to the Merchant's Safaricom Buy-Goods Till/Business PayBill.
+
+### 5. 🤖 Human-Centric PFA Bot & AI Co-pilot (`/chat`)
+An empathetic, responsive therapist companion:
+*   **Google Gemini Copilot**: Available for admins, volunteers, community leaders, and beneficiaries to help them manage distress, chronic exposure, and fatigue.
+*   **Auto-Triage Diagnostics & Emergency Fallbacks**: If the system detects acute distress or suicidal symptoms during a session, it immediately triggers safety alerts and automatically assigns the nearest active volunteer or leader coordinate to step in and offer urgent physical assistance.
 
 ---
 
@@ -32,7 +43,7 @@ Designed for retail partners handling regional supplies:
 The system's **SMS Config & Simulator** has been securely hidden from the default administrative sidebar to maintain a professional workspace. However, it is fully accessible using reactive SPA routing parameter deep hashes:
 
 *   **URL Portal Link**: [https://ais-dev-difkbq5rw4a6odzwmtdk7a-326067413989.europe-west1.run.app/admin#sms-settings](https://ais-dev-difkbq5rw4a6odzwmtdk7a-326067413989.europe-west1.run.app/admin#sms-settings)
-*   Alternatively, append `?tab=sms-settings` or hash `#sms-settings` directly to your active browser address bar while logged in as an administrator.
+*   Alternatively, append `#sms-settings` directly to your active browser address bar while logged in as an administrator.
 
 ---
 

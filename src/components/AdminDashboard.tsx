@@ -10,6 +10,7 @@ import {
   Eye, EyeOff, Trash2, Edit, Save, X, Phone as PhoneIcon, Sliders, Info, Server, Sun, Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import PFABuddyChat from './PFABuddyChat';
 
 type Tab = 'analytics' | 'users' | 'campaigns' | 'triage' | 'disbursements' | 'sms-settings';
 
@@ -673,8 +674,91 @@ export default function AdminDashboard() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+              className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full"
             >
+              {/* 👑 Community Leader Verification Requests (Google Forms format) */}
+              {(() => {
+                const pendingLeaders = profiles.filter(p => p.county?.startsWith('Community Leader |') && p.status === 'pending');
+                if (pendingLeaders.length === 0) return null;
+                return (
+                  <div className="col-span-full bg-amber-500/5 border border-amber-500/20 rounded-3xl p-6 md:p-8 space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h3 className="text-xl font-black text-amber-600 flex items-center gap-2">
+                          👑 Pending Community Leader Applications ({pendingLeaders.length})
+                        </h3>
+                        <p className="text-sm font-medium text-slate-500 mt-1">
+                          Review deep Google Form style questionnaire applications for localized disaster alert privileges.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {pendingLeaders.map((p) => {
+                        const parts = p.county?.split('|') || [];
+                        const leadCounty = parts[1]?.trim() || 'Unspecified';
+                        const community = parts[2]?.trim() || 'N/A';
+                        const title = parts[3]?.trim() || 'N/A';
+                        const exp = parts[4]?.trim() || 'N/A';
+                        const livestock = parts[5]?.trim() || 'N/A';
+                        const reason = parts[6]?.trim() || 'N/A';
+                        return (
+                          <div key={p.id} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-4">
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-black text-slate-950 text-base">{p.full_name}</h4>
+                                  <p className="text-xs text-slate-400 font-bold">{p.email}</p>
+                                </div>
+                                <span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider">
+                                  {leadCounty} Leader
+                                </span>
+                              </div>
+                              <div className="border-t border-slate-100 pt-3 space-y-2.5 text-xs text-slate-605">
+                                <p><span className="font-extrabold text-slate-500 uppercase tracking-widest text-[9px]">Area/Ward:</span> {community}</p>
+                                <p><span className="font-extrabold text-slate-500 uppercase tracking-widest text-[9px]">Official Title:</span> {title}</p>
+                                <p><span className="font-extrabold text-slate-500 uppercase tracking-widest text-[9px]">Loss/Livestock:</span> {livestock}</p>
+                                <p className="bg-slate-50 p-2.5 rounded-xl text-slate-500 italic border border-slate-100 font-medium">
+                                  <span className="font-extrabold block text-slate-400 text-[9px] uppercase tracking-wider not-italic mb-1">Exp & Background:</span>
+                                  " {exp} "
+                                </p>
+                                <p className="bg-red-500/5 p-2.5 rounded-xl text-red-600 italic border border-red-500/10 font-bold">
+                                  <span className="font-extrabold block text-red-500 text-[9px] uppercase tracking-wider not-italic mb-1">Verification Statement:</span>
+                                  " {reason} "
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 pt-2 border-t border-slate-100">
+                              <button
+                                onClick={async () => {
+                                  const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', p.id);
+                                  if (!error) {
+                                    fetchProfiles();
+                                  }
+                                }}
+                                className="flex-1 bg-green-650 hover:bg-green-700 text-white font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1"
+                              >
+                                Approve & Verify 👑
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const { error } = await supabase.from('profiles').update({ status: 'suspended' }).eq('id', p.id);
+                                  if (!error) {
+                                    fetchProfiles();
+                                  }
+                                }}
+                                className="px-3 bg-red-50 hover:bg-red-100 text-red-650 font-black py-2.5 rounded-xl text-xs transition-all"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="lg:col-span-1">
                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm sticky top-8">
                   <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
@@ -1815,6 +1899,7 @@ export default function AdminDashboard() {
           )}
         </AnimatePresence>
       </main>
+      <PFABuddyChat isDark={isDark} />
     </div>
   );
 }
