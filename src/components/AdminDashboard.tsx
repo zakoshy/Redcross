@@ -2535,10 +2535,10 @@ function SidebarLink({ icon, label, active, onClick, badge, isDark, isCollapsed 
       title={label}
       className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-3 rounded-xl transition-all font-bold group relative ${
         active 
-          ? 'bg-red-650 text-white shadow-lg shadow-red-200/50' 
+          ? 'bg-red-650 text-white shadow-xl shadow-red-650/20 border-b-2 border-red-700/40' 
           : isDark 
             ? 'text-slate-400 hover:bg-slate-800/40 hover:text-white' 
-            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'
+            : 'text-slate-650 hover:bg-slate-100 hover:text-red-500 hover:shadow-sm'
       }`}
     >
       <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
