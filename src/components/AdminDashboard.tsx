@@ -11,7 +11,6 @@ import {
   ChevronLeft, ChevronRight, Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, Cell } from 'recharts';
 import PFABuddyChat from './PFABuddyChat';
 
@@ -77,8 +76,106 @@ function parseCountyAndAttributes(rawCounty: string | null): { county: string; i
   return { county, isLeader: false, attributes };
 }
 
+function getNearbyCounties(countyName: string): string[] {
+  const cleanName = countyName.trim().toLowerCase();
+  const map: Record<string, string[]> = {
+    "mombasa": ["Kilifi", "Kwale", "Taita/Taveta", "Lamu"],
+    "kwale": ["Mombasa", "Kilifi", "Taita/Taveta"],
+    "kilifi": ["Mombasa", "Kwale", "Tana River", "Lamu"],
+    "tana river": ["Garissa", "Lamu", "Kilifi", "Kitui", "Isiolo"],
+    "lamu": ["Kilifi", "Tana River", "Garissa"],
+    "taita/taveta": ["Kwale", "Mombasa", "Makueni", "Kajiado"],
+    "garissa": ["Wajir", "Tana River", "Isiolo", "Kitui", "Lamu"],
+    "wajir": ["Mandera", "Garissa", "Marsabit", "Isiolo"],
+    "mandera": ["Wajir", "Marsabit"],
+    "marsabit": ["Isiolo", "Wajir", "Samburu", "Turkana", "Mandera"],
+    "isiolo": ["Meru", "Laikipia", "Samburu", "Marsabit", "Wajir", "Garissa"],
+    "meru": ["Tharaka-Nithi", "Isiolo", "Laikipia", "Nyeri", "Embu"],
+    "tharaka-nithi": ["Meru", "Embu", "Kitui"],
+    "embu": ["Tharaka-Nithi", "Kirinyaga", "Machakos", "Kitui", "Meru"],
+    "kitui": ["Machakos", "Makueni", "Tana River", "Garissa", "Embu"],
+    "machakos": ["Nairobi", "Kiambu", "Makueni", "Kitui", "Kajiado", "Murang'a", "Embu"],
+    "makueni": ["Machakos", "Kajiado", "Taita/Taveta", "Kitui"],
+    "nyandarua": ["Nakuru", "Laikipia", "Nyeri", "Murang'a", "Kiambu"],
+    "nyeri": ["Laikipia", "meru", "Kirinyaga", "Murang'a", "Nyandarua"],
+    "kirinyaga": ["Embu", "Murang'a", "Nyeri"],
+    "murang'a": ["Nyeri", "Kirinyaga", "Kiambu", "Nyandarua", "Machakos"],
+    "kiambu": ["Nairobi", "Machakos", "Murang'a", "Nyandarua", "Nakuru", "Kajiado"],
+    "nairobi": ["Kiambu", "Machakos", "Kajiado"],
+    "turkana": ["West Pokot", "Samburu", "Baringo", "Marsabit"],
+    "west pokot": ["Turkana", "Trans Nzoia", "Elgeyo/Marakwet", "Baringo"],
+    "samburu": ["Marsabit", "Isiolo", "Laikipia", "Baringo", "Turkana"],
+    "trans nzoia": ["Bungoma", "Uasin Gishu", "Elgeyo/Marakwet", "West Pokot"],
+    "uasin gishu": ["Trans Nzoia", "Baringo", "Elgeyo/Marakwet", "Nandi", "Kericho"],
+    "elgeyo/marakwet": ["Trans Nzoia", "Uasin Gishu", "Baringo", "West Pokot"],
+    "nandi": ["Uasin Gishu", "Kericho", "Kisumu", "Vihiga", "Kakamega"],
+    "baringo": ["Nakuru", "Laikipia", "Samburu", "Turkana", "West Pokot", "Elgeyo/Marakwet", "Uasin Gishu", "Kericho"],
+    "laikipia": ["Samburu", "Isiolo", "Meru", "Nyeri", "Nyandarua", "Nakuru", "Baringo"],
+    "nakuru": ["Baringo", "Laikipia", "Nyandarua", "Kiambu", "Kajiado", "Narok", "Bomet", "Kericho"],
+    "narok": ["Nakuru", "Kajiado", "Bomet", "Migori", "Kisii", "Nyamira"],
+    "kajiado": ["Nairobi", "Kiambu", "Machakos", "Makueni", "Taita/Taveta", "Narok", "Nakuru"],
+    "rose/care": ["Nakuru", "Kajiado", "Makueni"],
+    "kericho": ["Nandi", "Uasin Gishu", "Baringo", "Nakuru", "Bomet", "Kisumu", "Nyamira"],
+    "bomet": ["Kericho", "Nakuru", "Narok", "Kisii", "Nyamira"],
+    "kakamega": ["Bungoma", "Busia", "Siaya", "Vihiga", "Nandi"],
+    "vihiga": ["Kakamega", "Nandi", "Kisumu", "Siaya"],
+    "bungoma": ["Trans Nzoia", "Kakamega", "Busia"],
+    "busia": ["Bungoma", "Kakamega", "Siaya"],
+    "siaya": ["Busia", "Kakamega", "Vihiga", "Kisumu", "Homa Bay"],
+    "kisumu": ["Vihiga", "Nandi", "Kericho", "Nyamira", "Homa Bay", "Siaya"],
+    "homa bay": ["Kisumu", "Siaya", "Migori", "Kisii"],
+    "migori": ["Homa Bay", "Kisii", "Narok"],
+    "kisii": ["Nyamira", "Bomet", "Narok", "Migori", "Homa Bay"],
+    "nyamira": ["Kisii", "Bomet", "Kericho", "Kisumu"]
+  };
+  return map[cleanName] || [];
+}
+
+function RobustChartWrapper({ children }: { children: (width: number, height: number) => React.ReactNode }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = React.useState({ width: 450, height: 280 });
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Initial size
+    const initialWidth = containerRef.current.getBoundingClientRect().width;
+    if (initialWidth > 0) {
+      setDimensions({ width: initialWidth, height: 280 });
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      if (!entries || entries.length === 0) return;
+      const { width } = entries[0].contentRect;
+      if (width > 0) {
+        setDimensions({ width: Math.floor(width), height: 280 });
+      }
+    });
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-full h-[320px] transition-all">
+      {children(dimensions.width, dimensions.height)}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { signOut, user } = useAuth();
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const hash = window.location.hash.replace('#', '') as Tab;
     if (['analytics', 'users', 'campaigns', 'triage', 'disbursements', 'sms-settings'].includes(hash)) {
@@ -135,6 +232,7 @@ export default function AdminDashboard() {
   const [atApiKey, setAtApiKey] = useState(() => localStorage.getItem('at_api_key') || '');
   const [atSenderId, setAtSenderId] = useState(() => localStorage.getItem('at_sender_id') || '');
   const [smsSimulationMode, setSmsSimulationMode] = useState(() => localStorage.getItem('at_sms_simulation') !== 'false');
+  const [pfaAiModel, setPfaAiModel] = useState(() => localStorage.getItem('pfa_ai_model') || 'meta/llama-3.1-8b-instruct');
   
   // Test SMS states
   const [testPhoneNumber, setTestPhoneNumber] = useState(() => localStorage.getItem('at_test_phone') || '+254711223344');
@@ -200,11 +298,6 @@ export default function AdminDashboard() {
     setAiAnalyticalInsight(null);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is not configured in Settings > Secrets. Please configure a valid key to run analysis.");
-      }
-
       const currentDateString = new Date().toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
@@ -212,9 +305,6 @@ export default function AdminDashboard() {
         year: 'numeric'
       });
       const currentMonthName = new Date().toLocaleDateString('en-US', { month: 'long' });
-
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
 You are a senior crisis forecaster and disaster response analytics expert for the Kenya Red Cross and UN-OCHA disaster coordination bureaus.
@@ -234,8 +324,22 @@ Provide your response in raw HTML containing:
 Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styling or warning borders. Keep the tone authoritative, technical, and human. Avoid generic fluff. Do not contain markdown wrappers like \`\`\`html or \`\`\`.
 `;
 
-      const result = await model.generateContent(prompt);
-      const outputText = result.response.text();
+      const response = await fetch("/api/disaster-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, aiModel: pfaAiModel })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status: ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (!resData.success) {
+        throw new Error(resData.error || "Failed to generate analytical assessment");
+      }
+
+      const outputText = resData.response || '';
       // Simple sanitize to remove potential markdown wrapping just in case
       const cleanOutput = outputText.replace(/```html/g, '').replace(/```/g, '').trim();
       setAiAnalyticalInsight(cleanOutput);
@@ -721,6 +825,9 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
               <span className={`text-[10px] md:text-xs px-2.5 py-1 rounded-lg font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} flex items-center gap-1.5`}>
                 📅 {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
+              <span className={`text-[10px] md:text-xs px-2.5 py-1 rounded-lg font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} flex items-center gap-1.5`}>
+                🕒 {currentTime}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -783,10 +890,9 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                   cleanVictimCounty = cleanVictimCounty.split('|')[1]?.trim() || '';
                 }
 
-                // Match volunteers & community leaders in same clean county
-                const nearbyResponders = profiles.filter(p => {
+                // 1. Try local county matching
+                const sameCountyResponders = profiles.filter(p => {
                   if (p.id === session.victim_id) return false;
-                  // Must be volunteer or leader
                   const isVol = p.role === 'volunteer';
                   const isLdr = p.county?.startsWith('Community Leader |');
                   if (!isVol && !isLdr) return false;
@@ -797,7 +903,67 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                   }
                   
                   return pCounty === cleanVictimCounty && pCounty !== '';
-                });
+                }).map(p => ({ ...p, correlationType: 'Local Area' }));
+
+                // 2. Cascade down to neighboring counties if local matches are 0
+                let displayedResponders = sameCountyResponders;
+                let proximityLevel = 'local'; // 'local' | 'neighbor' | 'reserve' | 'empty'
+
+                if (displayedResponders.length === 0 && cleanVictimCounty !== '') {
+                  const neighbors = getNearbyCounties(cleanVictimCounty).map(n => n.toLowerCase().trim());
+                  displayedResponders = profiles.filter(p => {
+                    if (p.id === session.victim_id) return false;
+                    const isVol = p.role === 'volunteer';
+                    const isLdr = p.county?.startsWith('Community Leader |');
+                    if (!isVol && !isLdr) return false;
+
+                    let pCounty = (p.county || '').toLowerCase().trim();
+                    if (pCounty.startsWith('community leader |')) {
+                      pCounty = pCounty.split('|')[1]?.trim() || '';
+                    }
+                    return neighbors.includes(pCounty) && pCounty !== '';
+                  }).map(p => {
+                    let cName = p.county || '';
+                    if (cName.startsWith('Community Leader |')) {
+                      cName = cName.split('|')[1]?.trim() || '';
+                    } else {
+                      cName = cName + ' County';
+                    }
+                    return { ...p, correlationType: `Neighboring (${cName})` };
+                  });
+                  if (displayedResponders.length > 0) {
+                    proximityLevel = 'neighbor';
+                  }
+                }
+
+                // 3. Absolute country-wide fallback
+                if (displayedResponders.length === 0) {
+                  displayedResponders = profiles.filter(p => {
+                    if (p.id === session.victim_id) return false;
+                    const isVol = p.role === 'volunteer';
+                    const isLdr = p.county?.startsWith('Community Leader |');
+                    if (!isVol && !isLdr) return false;
+
+                    let pCounty = (p.county || '').toLowerCase().trim();
+                    if (pCounty.startsWith('community leader |')) {
+                      pCounty = pCounty.split('|')[1]?.trim() || '';
+                    }
+                    return pCounty !== '';
+                  }).map(p => {
+                    let cName = p.county || '';
+                    if (cName.startsWith('Community Leader |')) {
+                      cName = cName.split('|')[1]?.trim() || '';
+                    } else {
+                      cName = cName + ' County';
+                    }
+                    return { ...p, correlationType: `Reserve Registry (${cName})` };
+                  });
+                  if (displayedResponders.length > 0) {
+                    proximityLevel = 'reserve';
+                  } else {
+                    proximityLevel = 'empty';
+                  }
+                }
 
                 return (
                   <motion.div
@@ -826,7 +992,7 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                           </div>
                           
                           <h4 className={`text-lg font-black mt-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                            {victim?.full_name || 'Beneficiary'} (County: <span className="underline">{rawVictimCounty.replace('Community Leader |', '').trim()}</span>)
+                            {victim?.full_name || 'Responder (Staff Member)'} (County: <span className="underline">{rawVictimCounty.replace('Community Leader |', '').trim()}</span>)
                           </h4>
                           
                           <p className={`text-xs font-semibold mt-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -879,17 +1045,28 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                         <div>
                           <h5 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${isDark ? 'text-red-400' : 'text-red-800'}`}>
                             <Users size={15} className="animate-pulse" />
-                            Registered Responders Found Nearby in {rawVictimCounty.replace('Community Leader |', '').trim()} County ({nearbyResponders.length})
+                            {proximityLevel === 'local' && (
+                              <span>Registered Responders Found Nearby in {rawVictimCounty.replace('Community Leader |', '').trim()} County ({displayedResponders.length})</span>
+                            )}
+                            {proximityLevel === 'neighbor' && (
+                              <span className="text-amber-500">⚠️ No exact localized members found! Deployed neighboring counties matches ({displayedResponders.length})</span>
+                            )}
+                            {proximityLevel === 'reserve' && (
+                              <span className="text-orange-500">⚠️ No exact matching volunteers found in physical vicinity. Displaying Kenya-Wide Red Cross Reserve ({displayedResponders.length})</span>
+                            )}
+                            {proximityLevel === 'empty' && (
+                              <span>No Responders Registered in system</span>
+                            )}
                           </h5>
                           <p className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'} mt-0.5`}>
-                            Instantly deploy localized leaders or volunteers physically closest to the victim's disaster location.
+                            Instantly dispatch emergency responder personnel physically closest to the victim's county.
                           </p>
                         </div>
                       </div>
 
-                      {nearbyResponders.length > 0 ? (
+                      {displayedResponders.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                          {nearbyResponders.map(responder => {
+                          {displayedResponders.map(responder => {
                             const isLdr = responder.county?.startsWith('Community Leader |');
                             const assignedToThis = session.volunteer_id === responder.id;
 
@@ -913,6 +1090,11 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                                       {isLdr ? '👑 Leader' : '🛡️ Volunteer'}
                                     </span>
                                   </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">
+                                      📍 {responder.correlationType}
+                                    </span>
+                                  </div>
                                   <p className="text-[10px] opacity-75 font-mono">{responder.phone_number || 'No registry phone'}</p>
                                 </div>
                                 
@@ -929,18 +1111,18 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                                           .update({ 
                                             volunteer_id: responder.id,
                                             status: 'in_progress',
-                                            notes: `${session.notes || ''}\n[DISPATCHED] Dispatched ${isLdr ? 'Community Leader' : 'Volunteer'} ${responder.full_name} to check physically.`
+                                            notes: `${session.notes || ''}\n[DISPATCHED] Dispatched ${isLdr ? 'Community Leader' : 'Volunteer'} ${responder.full_name} from ${responder.correlationType} to check physically.`
                                           })
                                           .eq('id', session.id);
                                         if (error) {
                                           setStatus({ type: 'error', message: 'Failed dispatching defender: ' + error.message });
                                         } else {
-                                          setStatus({ type: 'success', message: `${isLdr ? 'Leader' : 'Volunteer'} ${responder.full_name} dispatched successfully and assigned context!` });
+                                          setStatus({ type: 'success', message: `${isLdr ? 'Leader' : 'Volunteer'} ${responder.full_name} dispatched successfully!` });
                                           fetchTriage();
                                         }
                                       }}
                                       className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] rounded-lg transition-transform hover:scale-[1.03] cursor-pointer"
-                                      title="Dispatch nearby responder immediately"
+                                      title="Dispatch responder immediately"
                                     >
                                       Dispatch
                                     </button>
@@ -966,10 +1148,10 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                           isDark ? 'border-red-500/10 bg-slate-950/10' : 'border-red-200 bg-red-50/30'
                         }`}>
                           <p className="text-xs font-semibold opacity-85">
-                            ⚠️ No active volunteers or community leaders are currently registered inside <strong className="font-extrabold">{rawVictimCounty.replace('Community Leader |', '').trim()}</strong> County.
+                            ⚠️ No active volunteers or community leaders are currently registered in this system.
                           </p>
                           <p className="text-[10px] opacity-70 mt-1">
-                            Go to User Management tab to onboard immediate rescue personnel for this county.
+                            Go to User Management tab to onboard emergency response defenders.
                           </p>
                         </div>
                       )}
@@ -1139,17 +1321,19 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                           </p>
                         </div>
                         <div className="h-[320px] w-full pt-4">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={disbursementData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#e2e8f0"} vertical={false} />
-                              <XAxis dataKey="county" stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
-                              <YAxis stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
-                              <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }} />
-                              <Legend wrapperStyle={{ fontSize: 10, fontWeight: 'bold', paddingTop: 10 }} />
-                              <Bar dataKey="Historical Aid (KES)" fill={isDark ? "#334155" : "#cbd5e1"} radius={[4, 4, 0, 0]} name="Historical Baseline (KES)" />
-                              <Bar dataKey="Live Aid (KES)" fill="#ef4444" radius={[4, 4, 0, 0]} name="Live Red Cross Disbursements (KES)" />
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <RobustChartWrapper>
+                            {(width, height) => (
+                              <BarChart width={width} height={height} data={disbursementData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#e2e8f0"} vertical={false} />
+                                <XAxis dataKey="county" stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
+                                <YAxis stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }} />
+                                <Legend wrapperStyle={{ fontSize: 10, fontWeight: 'bold', paddingTop: 10 }} />
+                                <Bar dataKey="Historical Aid (KES)" fill={isDark ? "#334155" : "#cbd5e1"} radius={[4, 4, 0, 0]} name="Historical Baseline (KES)" />
+                                <Bar dataKey="Live Aid (KES)" fill="#ef4444" radius={[4, 4, 0, 0]} name="Live Red Cross Disbursements (KES)" />
+                              </BarChart>
+                            )}
+                          </RobustChartWrapper>
                         </div>
                       </div>
 
@@ -1164,18 +1348,20 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                           </p>
                         </div>
                         <div className="h-[320px] w-full pt-4">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={countyHazards} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#e2e8f0"} vertical={false} />
-                              <XAxis dataKey="name" stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
-                              <YAxis stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
-                              <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }} />
-                              <Legend wrapperStyle={{ fontSize: 10, fontWeight: 'bold', paddingTop: 10 }} />
-                              <Bar dataKey="Drought Probability" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Drought Risk (%)" />
-                              <Bar dataKey="Flood Probability" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Rain/Flood Risk (%)" />
-                              <Bar dataKey="Climate Vulnerability" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Climate Vulnerability Index" />
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <RobustChartWrapper>
+                            {(width, height) => (
+                              <BarChart width={width} height={height} data={countyHazards} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#e2e8f0"} vertical={false} />
+                                <XAxis dataKey="name" stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
+                                <YAxis stroke={isDark ? "#94a3b8" : "#475569"} fontSize={10} tickLine={false} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }} />
+                                <Legend wrapperStyle={{ fontSize: 10, fontWeight: 'bold', paddingTop: 10 }} />
+                                <Bar dataKey="Drought Probability" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Drought Risk (%)" />
+                                <Bar dataKey="Flood Probability" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Rain/Flood Risk (%)" />
+                                <Bar dataKey="Climate Vulnerability" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Climate Vulnerability Index" />
+                              </BarChart>
+                            )}
+                          </RobustChartWrapper>
                         </div>
                       </div>
                     </div>
@@ -2332,6 +2518,59 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                         className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-1 focus:ring-red-500 font-bold transition-all text-sm ${inputBg}`}
                       />
                       <p className={`text-[10px] ${textMuted} mt-1 ml-1`}>Leave empty to use shared short codes (default sandbox route).</p>
+                    </div>
+
+                    {/* NVIDIA NIM AI Engine Speed Optimizer */}
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'} space-y-3`}>
+                      <div>
+                        <span className={`text-xs font-black ${textPrimary} flex items-center gap-1.5`}>
+                          🤖 NVIDIA NIM AI Engine Speed Optimizer
+                        </span>
+                        <span className={`text-[10px] ${textSecondary} block leading-relaxed mt-0.5`}>
+                          Fine-tune response times vs. text complexity. Smaller parameters execute substantially faster.
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPfaAiModel('meta/llama-3.1-8b-instruct');
+                            localStorage.setItem('pfa_ai_model', 'meta/llama-3.1-8b-instruct');
+                          }}
+                          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
+                            pfaAiModel === 'meta/llama-3.1-8b-instruct'
+                              ? 'border-green-500 bg-green-500/10 text-green-500'
+                              : `${isDark ? 'border-slate-800 bg-slate-950/20 text-slate-400 hover:border-slate-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`
+                          }`}
+                        >
+                          <span className="text-xs font-black">⚡ Llama 3.1 8B</span>
+                          <span className="text-[10px] opacity-75 font-semibold mt-0.5">High-Speed (1-2s)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPfaAiModel('meta/llama-3.1-70b-instruct');
+                            localStorage.setItem('pfa_ai_model', 'meta/llama-3.1-70b-instruct');
+                          }}
+                          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
+                            pfaAiModel === 'meta/llama-3.1-70b-instruct'
+                              ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                              : `${isDark ? 'border-slate-800 bg-slate-950/20 text-slate-400 hover:border-slate-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`
+                          }`}
+                        >
+                          <span className="text-xs font-black">🧠 Llama 3.1 70B</span>
+                          <span className="text-[10px] opacity-75 font-semibold mt-0.5">Deep Detail (7-12s)</span>
+                        </button>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5 mt-1 text-[10px] font-bold text-slate-400">
+                        <span>Active Engine:</span>
+                        <span className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-850 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
+                          {pfaAiModel === 'meta/llama-3.1-8b-instruct' ? '⚡ Meta Llama 3.1 8B (Fast Care)' : '🧠 Meta Llama 3.1 70B (Complex reasoning)'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Developer SMS Bypass Override Checkbox */}

@@ -98,7 +98,10 @@ export default function Signup() {
         const isEmailError = error.message.toLowerCase().includes('email') || 
                              error.message.toLowerCase().includes('smtp') || 
                              error.message.toLowerCase().includes('provider') || 
-                             error.message.toLowerCase().includes('rate limit');
+                             error.message.toLowerCase().includes('rate limit') ||
+                             error.message.toLowerCase().includes('confirmation') ||
+                             error.message.toLowerCase().includes('message') ||
+                             error.message.toLowerCase().includes('send');
         if (isEmailError) {
           setEmailErrorBypass(true);
         }

@@ -115,6 +115,72 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
     return cStr;
   };
 
+  const getNearbyCounties = (countyName: string): string[] => {
+    const cleanName = countyName.trim().toLowerCase();
+    const map: Record<string, string[]> = {
+      "mombasa": ["Kilifi", "Kwale", "Taita/Taveta", "Lamu"],
+      "kwale": ["Mombasa", "Kilifi", "Taita/Taveta"],
+      "kilifi": ["Mombasa", "Kwale", "Tana River", "Lamu"],
+      "tana river": ["Garissa", "Lamu", "Kilifi", "Kitui", "Isiolo"],
+      "lamu": ["Kilifi", "Tana River", "Garissa"],
+      "taita/taveta": ["Kwale", "Mombasa", "Makueni", "Kajiado"],
+      "garissa": ["Wajir", "Tana River", "Isiolo", "Kitui", "Lamu"],
+      "wajir": ["Mandera", "Garissa", "Marsabit", "Isiolo"],
+      "mandera": ["Wajir", "Marsabit"],
+      "marsabit": ["Isiolo", "Wajir", "Samburu", "Turkana", "Mandera"],
+      "isiolo": ["Meru", "Laikipia", "Samburu", "Marsabit", "Wajir", "Garissa"],
+      "meru": ["Tharaka-Nithi", "Isiolo", "Laikipia", "Nyeri", "Embu"],
+      "tharaka-nithi": ["Meru", "Embu", "Kitui"],
+      "embu": ["Tharaka-Nithi", "Kirinyaga", "Machakos", "Kitui", "Meru"],
+      "kitui": ["Machakos", "Makueni", "Tana River", "Garissa", "Embu"],
+      "machakos": ["Nairobi", "Kiambu", "Makueni", "Kitui", "Kajiado", "Murang'a", "Embu"],
+      "makueni": ["Machakos", "Kajiado", "Taita/Taveta", "Kitui"],
+      "nyandarua": ["Nakuru", "Laikipia", "Nyeri", "Murang'a", "Kiambu"],
+      "nyeri": ["Laikipia", "meru", "Kirinyaga", "Murang'a", "Nyandarua"],
+      "kirinyaga": ["Embu", "Murang'a", "Nyeri"],
+      "murang'a": ["Nyeri", "Kirinyaga", "Kiambu", "Nyandarua", "Machakos"],
+      "kiambu": ["Nairobi", "Machakos", "Murang'a", "Nyandarua", "Nakuru", "Kajiado"],
+      "nairobi": ["Kiambu", "Machakos", "Kajiado"],
+      "turkana": ["West Pokot", "Samburu", "Baringo", "Marsabit"],
+      "west pokot": ["Turkana", "Trans Nzoia", "Elgeyo/Marakwet", "Baringo"],
+      "samburu": ["Marsabit", "Isiolo", "Laikipia", "Baringo", "Turkana"],
+      "trans nzoia": ["Bungoma", "Uasin Gishu", "Elgeyo/Marakwet", "West Pokot"],
+      "uasin gishu": ["Trans Nzoia", "Baringo", "Elgeyo/Marakwet", "Nandi", "Kericho"],
+      "elgeyo/marakwet": ["Trans Nzoia", "Uasin Gishu", "Baringo", "West Pokot"],
+      "nandi": ["Uasin Gishu", "Kericho", "Kisumu", "Vihiga", "Kakamega"],
+      "baringo": ["Nakuru", "Laikipia", "Samburu", "Turkana", "West Pokot", "Elgeyo/Marakwet", "Uasin Gishu", "Kericho"],
+      "laikipia": ["Samburu", "Isiolo", "Meru", "Nyeri", "Nyandarua", "Nakuru", "Baringo"],
+      "nakuru": ["Baringo", "Laikipia", "Nyandarua", "Kiambu", "Kajiado", "Narok", "Bomet", "Kericho"],
+      "narok": ["Nakuru", "Kajiado", "Bomet", "Migori", "Kisii", "Nyamira"],
+      "kajiado": ["Nairobi", "Kiambu", "Machakos", "Makueni", "Taita/Taveta", "Narok", "Nakuru"],
+      "kericho": ["Nandi", "Uasin Gishu", "Baringo", "Nakuru", "Bomet", "Kisumu", "Nyamira"],
+      "bomet": ["Kericho", "Nakuru", "Narok", "Kisii", "Nyamira"],
+      "kakamega": ["Bungoma", "Busia", "Siaya", "Vihiga", "Nandi"],
+      "vihiga": ["Kakamega", "Nandi", "Kisumu", "Siaya"],
+      "bungoma": ["Trans Nzoia", "Kakamega", "Busia"],
+      "busia": ["Bungoma", "Kakamega", "Siaya"],
+      "siaya": ["Busia", "Kakamega", "Vihiga", "Kisumu", "Homa Bay"],
+      "kisumu": ["Vihiga", "Nandi", "Kericho", "Nyamira", "Homa Bay", "Siaya"],
+      "homa bay": ["Kisumu", "Siaya", "Migori", "Kisii"],
+      "migori": ["Homa Bay", "Kisii", "Narok"],
+      "kisii": ["Nyamira", "Bomet", "Narok", "Migori", "Homa Bay"],
+      "nyamira": ["Kisii", "Bomet", "Kericho", "Kisumu"]
+    };
+    return map[cleanName] || [];
+  };
+
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -130,6 +196,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
     setRiskAssessment(null);
 
     try {
+      const chosenModel = localStorage.getItem('pfa_ai_model') || 'meta/llama-3.1-8b-instruct';
       const response = await fetch('/api/pfa-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,7 +204,8 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
           userMsg,
           profile,
           messages,
-          lang
+          lang,
+          aiModel: chosenModel
         })
       });
 
@@ -216,44 +284,101 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
     try {
       const userCounty = parseCounty(profile?.county);
 
-      // Query database for volunteers near the affected user (same county)
+      // Query database for active volunteers / leaders
       const { data: potentialPeers } = await supabase
         .from('profiles')
         .select('*')
         .eq('status', 'active');
 
-      const matchingPeers = (potentialPeers || []).filter(p => {
-        // Exclude current user
+      const allResponders = potentialPeers || [];
+
+      // 1. Try local county matching
+      const matchingPeers = allResponders.filter(p => {
         if (p.id === user?.id) return false;
-        // Check same county (either straight match or substring)
         const peerCounty = parseCounty(p.county);
         return peerCounty.toLowerCase() === userCounty.toLowerCase() && 
                (p.role === 'volunteer' || p.county?.startsWith('Community Leader |'));
       });
 
       if (matchingPeers.length > 0) {
-        // Pick the closest colleague
+        // Pick the closest colleague in local county
         const chosenPeer = matchingPeers[0];
         setEscalatedPeer(chosenPeer);
 
-        // Auto-create an urgent triage session peer ticket so it renders in their dashboard tab!
         await supabase.from('triage_sessions').upsert({
           victim_id: user?.id, // Staff member in distress
           volunteer_id: chosenPeer.id, // assigned teammate
-          last_message: `[COWORKER DISTRESS IN ${userCounty.toUpperCase()}] I am feeling overwhelmed: ${lastUserMsg}`,
+          last_message: `[COWORKER DISTRESS IN ${userCounty.toUpperCase()}] ${lastUserMsg}`,
           risk_score: score,
           status: 'open',
           escalated: true,
-          notes: `[CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress (Suicidal Safety Warning). Commenced instant coordinate protocol matching with county member: ${chosenPeer.full_name}. Contact: ${chosenPeer.phone_number || 'N/A'}`
+          notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress (Suicidal Safety Warning). Commenced instant coordinate protocol matching with local county member: ${chosenPeer.full_name}. Contact: ${chosenPeer.phone_number || 'N/A'}`
         }, { onConflict: 'victim_id' });
 
       } else {
-        // fallback to system admin
-        setEscalatedPeer({
-          full_name: "Administrative Crisis Support Line",
-          phone_number: "+254711223344",
-          role: "Crisis Coordinator"
+        // 2. Fallback to neighboring counties in proximity list
+        const neighbors = getNearbyCounties(userCounty).map(n => n.toLowerCase());
+        const neighboringPeers = allResponders.filter(p => {
+          if (p.id === user?.id) return false;
+          const peerCounty = parseCounty(p.county).toLowerCase();
+          return neighbors.includes(peerCounty) && 
+                 (p.role === 'volunteer' || p.county?.startsWith('Community Leader |'));
         });
+
+        if (neighboringPeers.length > 0) {
+          const chosenPeer = neighboringPeers[0];
+          setEscalatedPeer(chosenPeer);
+
+          await supabase.from('triage_sessions').upsert({
+            victim_id: user?.id,
+            volunteer_id: chosenPeer.id,
+            last_message: `[COWORKER DISTRESS IN ${userCounty.toUpperCase()}] ${lastUserMsg}`,
+            risk_score: score,
+            status: 'open',
+            escalated: true,
+            notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No local responders inside ${userCounty}, matched fallback nearby county responder: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`
+          }, { onConflict: 'victim_id' });
+
+        } else {
+          // 3. Fallback to any active volunteer / leader anywhere else in Kenya
+          const globalPeers = allResponders.filter(p => {
+            if (p.id === user?.id) return false;
+            return p.role === 'volunteer' || p.county?.startsWith('Community Leader |');
+          });
+
+          if (globalPeers.length > 0) {
+            const chosenPeer = globalPeers[0];
+            setEscalatedPeer(chosenPeer);
+
+            await supabase.from('triage_sessions').upsert({
+              victim_id: user?.id,
+              volunteer_id: chosenPeer.id,
+              last_message: `[COWORKER DISTRESS IN ${userCounty.toUpperCase()}] ${lastUserMsg}`,
+              risk_score: score,
+              status: 'open',
+              escalated: true,
+              notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. Deployed general backup counselor: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`
+            }, { onConflict: 'victim_id' });
+
+          } else {
+            // 4. Ultimate fallback to administrative coordinator line
+            setEscalatedPeer({
+              full_name: "Administrative Crisis Support Line",
+              phone_number: "+254711223344",
+              role: "Crisis Coordinator"
+            });
+
+            await supabase.from('triage_sessions').upsert({
+              victim_id: user?.id,
+              volunteer_id: null,
+              last_message: `[COWORKER DISTRESS IN ${userCounty.toUpperCase()}] ${lastUserMsg}`,
+              risk_score: score,
+              status: 'open',
+              escalated: true,
+              notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No registered rescue colleagues found anywhere. Upgraded alert directly to Administration Crisis Support Line.`
+            }, { onConflict: 'victim_id' });
+          }
+        }
       }
     } catch (e) {
       console.error("Critical routing error", e);

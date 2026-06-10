@@ -108,6 +108,18 @@ export default function MerchantDashboard() {
     localStorage.setItem('merchant_cabinet_balance', merchantCabinetBalance.toString());
   }, [merchantCabinetBalance]);
 
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     fetchWallet();
     fetchTransactions();
@@ -306,6 +318,10 @@ export default function MerchantDashboard() {
           <div className="flex items-center gap-3">
             <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-blue-400' : 'bg-blue-50 text-blue-650 border border-blue-100'} hidden sm:inline-flex items-center gap-1.5`}>
               📅 {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+
+            <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-blue-400' : 'bg-blue-50 text-blue-650 border border-blue-100'} inline-flex items-center gap-1.5`}>
+              🕒 {currentTime || "Loading..."}
             </span>
 
             {/* Theme Toggle Button */}

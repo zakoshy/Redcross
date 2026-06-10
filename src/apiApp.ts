@@ -262,35 +262,57 @@ app.post("/api/sms", async (req, res) => {
   }
 });
 
-let aiInstance: any = null;
-function getGenAI() {
-  if (!aiInstance) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error("GEMINI_API_KEY is missing. Please make sure to configure it in Settings > Secrets to enable this AI feature.");
-    }
-    aiInstance = new GoogleGenAI({
-      apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+async function callNvidiaAPI(prompt: string, modelName: string = "meta/llama-3.1-8b-instruct", maxTokens: number = 800): Promise<string> {
+  const apiKey = process.env.NVIDIA_API_KEY;
+  if (!apiKey) {
+    throw new Error("NVIDIA_API_KEY is missing. Please configure it in your Settings > Secrets or environment variables to enable the NVIDIA NIM powered chatbots.");
   }
-  return aiInstance;
+
+  // Ensure modelName defaults properly
+  const finalModel = modelName || "meta/llama-3.1-8b-instruct";
+  console.log(`[NVIDIA NIM API] Dispatching prompt to model: "${finalModel}" with max_tokens: ${maxTokens}`);
+
+  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: finalModel,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: maxTokens
+    })
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.text().catch(() => "");
+    throw new Error(`NVIDIA NIM API error (Status ${response.status}): ${errorPayload || "Unknown connection failure"}`);
+  }
+
+  const data = await response.json();
+  const replyContent = data?.choices?.[0]?.message?.content;
+  if (!replyContent) {
+    throw new Error("Empty or invalid choices set received from NVIDIA service.");
+  }
+  return replyContent;
 }
 
-// Gemini Psychological First Aid Chat proxy endpoint
+// NVIDIA Psychological First Aid Chat proxy endpoint
 app.post("/api/pfa-chat", async (req, res) => {
   try {
-    const { userMsg, profile, messages, lang } = req.body;
+    const { userMsg, profile, messages, lang, aiModel } = req.body;
     
     if (!userMsg) {
       return res.status(400).json({ error: "Missing required parameter: userMsg" });
     }
 
-    const ai = getGenAI();
     const formattedMessages = Array.isArray(messages) ? messages : [];
     
     const parseCounty = (cStr?: string) => {
@@ -326,42 +348,33 @@ app.post("/api/pfa-chat", async (req, res) => {
       ${formattedMessages.map((m: any) => `${m.role}: ${m.content}`).join('\n')}
 
       Output requirements:
-      Return ONLY a JSON response in the following format:
+      Return ONLY a valid JSON response structure (ensure pure valid JSON output, do not include code block ticks if possible, but keep it structured so it parses perfectly. Ensure properties are double-quoted):
       {
         "reply": "Write your supportive PFA feedback (or polite PFA-only refusal statement) in ${currentLang}. Validate feelings, or guide them through deep-breathing/grounding.",
-        "suicidal_assessment": "normal" or "distressed" or "suicidal",
+        "suicidal_assessment": "normal",
         "risk_score_0_to_1": 0.45
       }
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const replyText = response.text || "{}";
-    res.json({ success: true, response: replyText });
+    const replyText = await callNvidiaAPI(prompt, aiModel, 800);
+    res.json({ success: true, response: replyText.trim() });
   } catch (error: any) {
-    console.error("[Gemini API Error] PFA Chat Bot failed:", error);
+    console.error("[NVIDIA NIM API Error] PFA Chat Bot failed:", error);
     res.json({
       success: false,
-      error: error.message || "An error occurred while connecting to the AI network."
+      error: error.message || "An error occurred while connecting to the NVIDIA AI network."
     });
   }
 });
 
-// Secure server-side endpoint for the Beneficiary/Victim chat bot
+// Secure server-side endpoint for the Beneficiary/Victim chat bot using NVIDIA NIM
 app.post("/api/victim-chat", async (req, res) => {
   try {
-    const { userMsg, messages } = req.body;
+    const { userMsg, messages, aiModel } = req.body;
     if (!userMsg) {
       return res.status(400).json({ error: "Missing required parameter: userMsg" });
     }
 
-    const ai = getGenAI();
     const formattedHistory = Array.isArray(messages) ? messages : [];
 
     const prompt = `
@@ -379,7 +392,7 @@ app.post("/api/victim-chat", async (req, res) => {
          - 0.5: Distressed, needs attention.
          - 1.0: Immediate danger, suicidal ideation, self-harm signals, or severe trauma.
       
-      Return your response in JSON format only (no outside formatting, code block markers are allowed but return pure valid JSON):
+      Return your response in pure JSON format only (properties must use double-quotes, no preamble or greeting before the JSON):
       {
         "reply": "your empathetic response here",
         "risk_score": 0.85,
@@ -389,21 +402,31 @@ app.post("/api/victim-chat", async (req, res) => {
       If the user mentions wanting to die, suicide, ending their life, self-harm, or feeling that life is not worth living, set "suicidal_detected" to true and ensure risk_score is at least 0.95.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const replyText = response.text || "{}";
-    res.json({ success: true, response: replyText });
+    const replyText = await callNvidiaAPI(prompt, aiModel, 800);
+    res.json({ success: true, response: replyText.trim() });
   } catch (error: any) {
-    console.error("[Gemini API Error] Victim Chat Bot failed:", error);
+    console.error("[NVIDIA NIM API Error] Victim Chat Bot failed:", error);
     res.json({
       success: false,
-      error: error.message || "An error occurred while connecting to the AI network."
+      error: error.message || "An error occurred while connecting to the NVIDIA AI network."
+    });
+  }
+});
+
+// Secure server-side endpoint for county disaster hazard analysis using NVIDIA NIM
+app.post("/api/disaster-analysis", async (req, res) => {
+  try {
+    const { prompt, aiModel } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing required parameter: prompt" });
+    }
+    const replyText = await callNvidiaAPI(prompt, aiModel, 1024);
+    res.json({ success: true, response: replyText.trim() });
+  } catch (error: any) {
+    console.error("[NVIDIA NIM API Error] County Disaster Analysis failed:", error);
+    res.json({
+      success: false,
+      error: error.message || "An error occurred while connecting to the NVIDIA AI network."
     });
   }
 });

@@ -32,6 +32,18 @@ export default function VictimChatbot() {
   const [copied, setCopied] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Theme configuration variables (matching highly stylized merchant look)
   const isDark = theme === 'dark';
   const containerBg = isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800';
@@ -110,13 +122,15 @@ export default function VictimChatbot() {
     setLoading(true);
 
     try {
+      const chosenModel = localStorage.getItem('pfa_ai_model') || 'meta/llama-3.1-8b-instruct';
       // 1. Get AI Response and Risk Assessment from secure server API proxy
       const response = await fetch('/api/victim-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userMsg: userMessage,
-          messages: messages
+          messages: messages,
+          aiModel: chosenModel
         })
       });
 
@@ -413,6 +427,10 @@ export default function VictimChatbot() {
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
               <span className="text-xs font-black hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
             </button>
+
+            <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} inline-flex items-center gap-1.5`}>
+              🕒 {currentTime || "Loading..."}
+            </span>
 
             {riskScore > 0.7 && (
               <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-xl animate-bounce">

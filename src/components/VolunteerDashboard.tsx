@@ -77,6 +77,18 @@ export default function VolunteerDashboard() {
   
   const assignedCounty = parseCounty(profile?.county);
 
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Beneficiary Registration Form Optional States as requested
   const [name, setName] = useState('');
   const [idNumber, setIdNumber] = useState('');
@@ -477,6 +489,10 @@ export default function VolunteerDashboard() {
         <div className="flex items-center gap-2 md:gap-4">
           <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} hidden sm:inline-flex items-center gap-1.5`}>
             📅 {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
+
+          <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} inline-flex items-center gap-1.5`}>
+            🕒 {currentTime || "Loading..."}
           </span>
 
           <span className="text-xs px-3.5 py-1.5 rounded-xl font-black uppercase tracking-wider bg-red-600/10 text-red-650 border border-red-500/20 inline-flex items-center gap-1.5">
