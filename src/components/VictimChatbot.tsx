@@ -120,6 +120,21 @@ export default function VictimChatbot() {
         })
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        console.error("Vercel or Server returned error status:", response.status, errorText);
+        throw new Error(
+          `The server experienced an issue (Status ${response.status}). This usually indicates a request timeout or that GEMINI_API_KEY is not configured in Vercel's Environment Variables. Please verify configuration in the Vercel project settings.`
+        );
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const textPayload = await response.text().catch(() => "");
+        console.error("Non-JSON proxy output:", textPayload);
+        throw new Error("The server responded with an unexpected document format. The model may be experiencing heavy load; please try again in a few moments.");
+      }
+
       const resData = await response.json();
       if (!resData.success) {
         throw new Error(resData.error || "The AI session could not be completed securely.");
