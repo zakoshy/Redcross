@@ -1,10 +1,10 @@
 import express from "express";
-import { createRequire } from "module";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { GoogleGenAI } from "@google/genai";
+import africastalking from "africastalking";
+import twilio from "twilio";
 
-const require = createRequire(import.meta.url);
 dotenv.config();
 
 let supabaseInstance: any = null;
@@ -36,9 +36,11 @@ function getAtSms(customApiKey?: string, customUsername?: string) {
   }
 
   try {
-    const africastalking = require("africastalking");
     console.log(`[SMS API] Constructing Africa's Talking SMS instance with username: "${username}" (API Key size: ${apiKey ? apiKey.length : 0})`);
-    const at = africastalking({
+    
+    // Support default exports in CJS/ESM interop
+    const atConstructor = (africastalking as any).default || africastalking;
+    const at = atConstructor({
       apiKey: apiKey,
       username: username
     });
@@ -55,8 +57,8 @@ function getAtSms(customApiKey?: string, customUsername?: string) {
 function getTwilioClient() {
   if (!twilioClient && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
     try {
-      const twilio = require("twilio");
-      twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const twilioConstructor = (twilio as any).default || twilio;
+      twilioClient = twilioConstructor(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     } catch (error) {
       console.error("Failed to initialize Twilio:", error);
     }
