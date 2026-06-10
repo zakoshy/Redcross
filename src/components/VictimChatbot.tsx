@@ -125,17 +125,20 @@ export default function VictimChatbot() {
         ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
         Task:
-        1. Provide a supportive, empathetic PFA response. (Avoid dry or overly technical counselor jargon, speak naturally and supportively).
+        1. Provide a supportive, empathetic PFA response (Avoid dry or overly technical counselor jargon, speak naturally, with deep supportiveness and reassurance).
         2. Assess the risk/danger level of the user (0.0 to 1.0). 
            - 0.0: Calm, safe.
            - 0.5: Distressed, needs attention.
-           - 1.0: Immediate danger, suicidal ideation, or severe trauma.
+           - 1.0: Immediate danger, suicidal ideation, self-harm signals, or severe trauma.
         
-        Return your response in JSON format:
+        Return your response in JSON format only (no outside formatting, code block markers are allowed but return pure valid JSON):
         {
           "reply": "your empathetic response here",
-          "risk_score": 0.85
+          "risk_score": 0.85,
+          "suicidal_detected": true
         }
+        
+        If the user mentions wanting to die, suicide, ending their life, self-harm, or feeling that life is not worth living, set "suicidal_detected" to true and ensure risk_score is at least 0.95.
       `;
 
       const result = await model.generateContent(prompt);
@@ -143,10 +146,18 @@ export default function VictimChatbot() {
       
       // Extract JSON (Gemini sometimes wraps in markdown)
       const jsonMatch = responseText.match(/\{.*\}/s);
-      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { reply: "I'm here for you. Tell me more.", risk_score: 0.1 };
+      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { reply: "I'm here for you. Tell me more.", risk_score: 0.1, suicidal_detected: false };
 
-      setMessages(prev => [...prev, { role: 'bot', content: data.reply }]);
-      setRiskScore(data.risk_score);
+      const isSuicidal = data.suicidal_detected === true || data.risk_score >= 0.9 || /suicid|kill myself|end my life|want to die|self-harm|cut myself/i.test(userMessage);
+
+      // If suicidal, override response to add emergency details/warmth.
+      let finalReply = data.reply;
+      if (isSuicidal) {
+        finalReply += "\n\n💚 Please know that you are not alone. Please reach out to the Red Cross Crisis Response team or call the toll-free emergency support line at 0800-723-253 or the suicide preventative helpline immediately. We are dispatching immediate help coordinates.";
+      }
+
+      setMessages(prev => [...prev, { role: 'bot', content: finalReply }]);
+      setRiskScore(isSuicidal ? 1.0 : data.risk_score);
 
       // 2. Update or Create Triage Session in Supabase
       if (user) {
@@ -155,9 +166,12 @@ export default function VictimChatbot() {
           .upsert({
             victim_id: user.id,
             last_message: userMessage,
-            risk_score: data.risk_score,
-            status: data.risk_score > 0.7 ? 'open' : 'closed',
-            escalated: data.risk_score > 0.7
+            risk_score: isSuicidal ? 1.0 : data.risk_score,
+            status: (isSuicidal || data.risk_score > 0.7) ? 'open' : 'closed',
+            escalated: isSuicidal || data.risk_score > 0.7,
+            notes: isSuicidal 
+              ? `[ALERT_SUICIDAL] High risk of self-harm/suicidal ideation detected.`
+              : `Safe evaluation under PFA index ${data.risk_score}`
           }, { onConflict: 'victim_id' });
         
         if (error) console.error("Error updating triage:", error);

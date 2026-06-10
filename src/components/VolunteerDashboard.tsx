@@ -40,6 +40,18 @@ export default function VolunteerDashboard() {
 
   // Community Leader State Decoders
   const isLeader = profile?.county?.startsWith('Community Leader |') || false;
+
+  React.useEffect(() => {
+    if (isLeader) {
+      setActiveTab('alerts');
+    }
+  }, [isLeader]);
+
+  // Strict Sanitizer to prevent SQL Injection and command-breakouts
+  const sanitize = (text: string): string => {
+    if (!text) return '';
+    return text.trim().replace(/[<>"';\\={}$]/g, '');
+  };
   
   // Dynamic time-based greeting helper
   const getGreetingAndWelcome = () => {
@@ -221,17 +233,22 @@ export default function VolunteerDashboard() {
     e.preventDefault();
     setStatus(null);
 
+    // Apply strict sanitation layers to prevent injection or metadata breakouts
+    const cleanName = sanitize(name);
+    const cleanIdNumber = sanitize(idNumber);
+    const cleanPhoneNumber = sanitize(phoneNumber).replace(/\s/g, '');
+
     const customParts = customFields
       .filter(cf => cf.label.trim() !== '')
-      .map(cf => `${cf.label.trim()}: ${cf.value.trim() || 'None'}`)
+      .map(cf => `${sanitize(cf.label)}: ${sanitize(cf.value) || 'None'}`)
       .join(' | ');
 
-    const serializedCounty = targetCounty + (customParts ? ` | ${customParts}` : '');
+    const serializedCounty = sanitize(targetCounty) + (customParts ? ` | ${customParts}` : '');
 
     const { error } = await supabase.rpc('register_victim', {
-      p_full_name: name,
-      p_national_id: idNumber,
-      p_phone_number: phoneNumber,
+      p_full_name: cleanName,
+      p_national_id: cleanIdNumber,
+      p_phone_number: cleanPhoneNumber,
       p_county: serializedCounty
     });
 
@@ -259,12 +276,19 @@ export default function VolunteerDashboard() {
     e.preventDefault();
     setAlertSuccess(null);
 
-    const alertMessage = `[DISASTER_ALERT] ${disasterType} disaster occurred in ${assignedCounty} county (${communityWardName} area). Urgent relief coordination required. Families affected: ${familiesHit || 'Multiple'}. Damage level: ${alertUrgency}. Details: ${lossDescription}`;
+    // Apply strict sanitization to prevent potential query hacks and formatting breaks
+    const cleanDisasterType = sanitize(disasterType);
+    const cleanWardName = sanitize(communityWardName);
+    const cleanFamiliesHit = sanitize(familiesHit);
+    const cleanLossDetail = sanitize(lossDescription);
+    const cleanUrgency = sanitize(alertUrgency);
+
+    const alertMessage = `[DISASTER_ALERT] ${cleanDisasterType} disaster occurred in ${assignedCounty} county (${cleanWardName} area). Urgent relief coordination required. Families affected: ${cleanFamiliesHit || 'Multiple'}. Damage level: ${cleanUrgency}. Details: ${cleanLossDetail}`;
 
     const { error } = await supabase.from('triage_sessions').upsert({
       victim_id: user?.id || '', // Leader ID
       last_message: alertMessage,
-      risk_score: alertUrgency === 'Critical' ? 0.95 : alertUrgency === 'High' ? 0.75 : 0.5,
+      risk_score: cleanUrgency === 'Critical' ? 0.95 : cleanUrgency === 'High' ? 0.75 : 0.5,
       status: 'open',
       escalated: true,
       notes: `[COMMUNITY LEADER ALERT] Published by local Chief/Leader ${profile?.full_name} for county ${assignedCounty}.`
@@ -451,8 +475,12 @@ export default function VolunteerDashboard() {
         </div>
         
         <div className="flex items-center gap-2 md:gap-4">
-          <span className={`text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider hidden sm:inline-flex items-center gap-1 bg-red-500/10 text-red-500`}>
-            {isLeader ? '👑 Community Leader' : '🛡️ Disaster Volunteer'} : {assignedCounty}
+          <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-red-400' : 'bg-red-50 text-red-650 border border-red-100'} hidden sm:inline-flex items-center gap-1.5`}>
+            📅 {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
+
+          <span className="text-xs px-3.5 py-1.5 rounded-xl font-black uppercase tracking-wider bg-red-600/10 text-red-650 border border-red-500/20 inline-flex items-center gap-1.5">
+            👤 {profile?.full_name || 'Responder'} ({isLeader ? '👑 Leader' : '🛡️ Volunteer'}) - {assignedCounty}
           </span>
 
           {/* Theme Switcher Button */}
@@ -493,12 +521,9 @@ export default function VolunteerDashboard() {
               </p>
             </div>
             <div className="z-10 flex gap-2 w-full sm:w-auto">
-              <button 
-                onClick={() => setActiveTab('alerts')} 
-                className="bg-white text-red-650 px-5 py-3 rounded-xl font-black text-xs hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-lg"
-              >
-                Launch Alert Dispatch <ArrowRight size={13} />
-              </button>
+              <span className="bg-white/10 text-white px-5 py-3 rounded-xl font-black text-xs border border-white/20 whitespace-nowrap flex items-center gap-1.5 shadow-md">
+                🌐 Broadcast System Enabled
+              </span>
             </div>
           </div>
         ) : (
@@ -517,51 +542,53 @@ export default function VolunteerDashboard() {
           </div>
         )}
 
-        {/* Quick Stats / Tabs */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <TabButton 
-            active={activeTab === 'register'} 
-            onClick={() => setActiveTab('register')}
-            icon={<UserPlus size={20} />}
-            label="Register Beneficiary"
-            description="Add localized profiles"
-            isDark={isDark}
-          />
-          <TabButton 
-            active={activeTab === 'cases'} 
-            onClick={() => setActiveTab('cases')}
-            icon={<ShieldAlert size={20} />}
-            label="Urgent Cases"
-            description={`${assignedCases.length} peer assignments`}
-            badge={assignedCases.length > 0 ? assignedCases.length : undefined}
-            isDark={isDark}
-          />
-          <TabButton 
-            active={activeTab === 'alerts'} 
-            onClick={() => setActiveTab('alerts')}
-            icon={<Megaphone size={20} />}
-            label="Disaster Alerts"
-            description="Broadcasting center"
-            badge={disasterAlerts.length > 0 ? disasterAlerts.length : undefined}
-            isDark={isDark}
-          />
-          <TabButton 
-            active={activeTab === 'search'} 
-            onClick={() => setActiveTab('search')}
-            icon={<Search size={20} />}
-            label="Search Directory"
-            description="Verify verified profiles"
-            isDark={isDark}
-          />
-          <TabButton 
-            active={activeTab === 'history'} 
-            onClick={() => setActiveTab('history')}
-            icon={<Activity size={20} />}
-            label="My Registrations"
-            description={`${victims.length} records`}
-            isDark={isDark}
-          />
-        </div>
+        {/* Quick Stats / Tabs - Hidden for Community Leaders */}
+        {!isLeader && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <TabButton 
+              active={activeTab === 'register'} 
+              onClick={() => setActiveTab('register')}
+              icon={<UserPlus size={20} />}
+              label="Register Beneficiary"
+              description="Add localized profiles"
+              isDark={isDark}
+            />
+            <TabButton 
+              active={activeTab === 'cases'} 
+              onClick={() => setActiveTab('cases')}
+              icon={<ShieldAlert size={20} />}
+              label="Urgent Cases"
+              description={`${assignedCases.length} peer assignments`}
+              badge={assignedCases.length > 0 ? assignedCases.length : undefined}
+              isDark={isDark}
+            />
+            <TabButton 
+              active={activeTab === 'alerts'} 
+              onClick={() => setActiveTab('alerts')}
+              icon={<Megaphone size={20} />}
+              label="Disaster Alerts"
+              description="Broadcasting center"
+              badge={disasterAlerts.length > 0 ? disasterAlerts.length : undefined}
+              isDark={isDark}
+            />
+            <TabButton 
+              active={activeTab === 'search'} 
+              onClick={() => setActiveTab('search')}
+              icon={<Search size={20} />}
+              label="Search Directory"
+              description="Verify verified profiles"
+              isDark={isDark}
+            />
+            <TabButton 
+              active={activeTab === 'history'} 
+              onClick={() => setActiveTab('history')}
+              icon={<Activity size={20} />}
+              label="My Registrations"
+              description={`${victims.length} records`}
+              isDark={isDark}
+            />
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           
@@ -966,7 +993,8 @@ export default function VolunteerDashboard() {
                           </p>
 
                           {/* Volunteers Action Box: Trigger and execute disbursement to matched victims */}
-                          <div className="bg-amber-500/5 p-4 rounded-2xl border border-amber-500/20 space-y-4">
+                          {!isLeader && (
+                            <div className="bg-amber-500/5 p-4 rounded-2xl border border-amber-500/20 space-y-4">
                             <div className="flex items-center gap-2">
                               <DollarSign className="text-amber-600" size={18} />
                               <div>
@@ -1022,6 +1050,7 @@ export default function VolunteerDashboard() {
                               </div>
                             )}
                           </div>
+                          )}
                         </div>
                       );
                     })}

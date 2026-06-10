@@ -304,6 +304,10 @@ export default function MerchantDashboard() {
           </div>
           
           <div className="flex items-center gap-3">
+            <span className={`text-[10px] md:text-xs px-3 py-1.5 rounded-xl font-black uppercase tracking-wider ${isDark ? 'bg-slate-900 border border-slate-800 text-blue-400' : 'bg-blue-50 text-blue-650 border border-blue-100'} hidden sm:inline-flex items-center gap-1.5`}>
+              📅 {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
