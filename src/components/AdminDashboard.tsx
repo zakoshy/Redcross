@@ -38,6 +38,45 @@ function normalizePhone(phone: string): string {
   return normalized;
 }
 
+function parseCountyAndAttributes(rawCounty: string | null): { county: string; isLeader: boolean; attributes: { label: string; value: string }[] } {
+  if (!rawCounty) return { county: 'N/A', isLeader: false, attributes: [] };
+  
+  const trimmed = rawCounty.trim();
+  // Check if it's a Community Leader format
+  if (trimmed.startsWith('Community Leader |')) {
+    const parts = trimmed.split('|').map(s => s.trim());
+    return {
+      county: parts[1] || 'N/A',
+      isLeader: true,
+      attributes: [
+        { label: 'Area/Ward', value: parts[2] || 'N/A' },
+        { label: 'Official Title', value: parts[3] || 'N/A' },
+        { label: 'Background/Exp', value: parts[4] || 'N/A' },
+        { label: 'Loss/Assets', value: parts[5] || 'N/A' },
+        { label: 'Verification Statement', value: parts[6] || 'N/A' }
+      ]
+    };
+  }
+  
+  const parts = trimmed.split('|').map(p => p.trim());
+  const county = parts[0] || 'N/A';
+  const attributes: { label: string; value: string }[] = [];
+  
+  for (let i = 1; i < parts.length; i++) {
+    const subPart = parts[i];
+    if (subPart.includes(':')) {
+      const idx = subPart.indexOf(':');
+      const label = subPart.substring(0, idx).trim();
+      const value = subPart.substring(idx + 1).trim();
+      attributes.push({ label, value });
+    } else {
+      attributes.push({ label: `Field ${i}`, value: subPart });
+    }
+  }
+  
+  return { county, isLeader: false, attributes };
+}
+
 export default function AdminDashboard() {
   const { signOut, user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -133,6 +172,21 @@ export default function AdminDashboard() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Expanded User Profiles for Corporate Dossier Layout
+  const [expandedUserIds, setExpandedUserIds] = useState<Record<string, boolean>>({});
+
+  const toggleUserExpand = (userId: string) => {
+    setExpandedUserIds(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
+  };
+
+  // Triage state variables with pagination and filters
+  const [triagePage, setTriagePage] = useState(1);
+  const triageItemsPerPage = 10;
+  const [triageStatusFilter, setTriageStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'closed'>('all');
 
   // Triggerable AI Disaster Analysis State
   const [aiAnalyticalInsight, setAiAnalyticalInsight] = useState<string | null>(null);
@@ -1423,119 +1477,191 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {currentProfiles.map(p => (
-                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500">
-                                  {p.full_name?.[0] || p.email?.[0]}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900">{p.full_name || 'Unnamed'}</p>
-                                  <p className="text-xs text-slate-500">{p.email}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              {p.county?.startsWith('Community Leader |') ? (
-                                <span className="px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 w-fit shadow-xs">
-                                  👑 Leader
-                                </span>
-                              ) : (
-                                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
-                                  p.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                  p.role === 'volunteer' ? 'bg-blue-100 text-blue-700' :
-                                  p.role === 'merchant' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700'
-                                }`}>
-                                  {p.role}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-1 w-fit ${
-                                p.status === 'active' ? 'bg-green-100 text-green-700' :
-                                p.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                <div className={`w-1.5 h-1.5 rounded-full ${
-                                  p.status === 'active' ? 'bg-green-500' :
-                                  p.status === 'pending' ? 'bg-amber-500' : 'bg-red-500'
-                                }`} />
-                                {p.county?.startsWith('Community Leader |') ? 'Vetted 🛡️' : (p.status === 'pending' ? 'Inactive' : p.status)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              {p.county?.startsWith('Community Leader |') ? (
-                                (() => {
-                                  const parts = p.county.split('|');
-                                  const countyName = parts[1]?.trim() || 'N/A';
-                                  const wardName = parts[2]?.trim() || 'N/A';
-                                  const titleName = parts[3]?.trim() || 'N/A';
-                                  return (
-                                    <div className="space-y-1 text-xs">
-                                      <p className="font-extrabold text-slate-900">{countyName} County</p>
-                                      <p className="text-[10px] text-slate-500 font-bold flex items-center gap-1">
-                                        📍 <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md font-semibold">{wardName}</span>
-                                      </p>
-                                      <p className="text-[9px] text-amber-750 font-black uppercase tracking-wide">
-                                        🛡️ {titleName}
-                                      </p>
+                        {currentProfiles.map(p => {
+                          const parsed = parseCountyAndAttributes(p.county);
+                          const hasExtraAttrs = parsed.attributes.length > 0;
+                          const isExpanded = !!expandedUserIds[p.id];
+                          
+                          return (
+                            <React.Fragment key={p.id}>
+                              <tr className="hover:bg-slate-105 transition-colors">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500">
+                                      {p.full_name?.[0] || p.email?.[0]}
                                     </div>
-                                  );
-                                })()
-                              ) : (
-                                <span className="text-sm font-bold text-slate-600">{p.county || 'N/A'}</span>
+                                    <div>
+                                      <p className="font-bold text-slate-900">{p.full_name || 'Unnamed'}</p>
+                                      <p className="text-xs text-slate-500">{p.email}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {p.county?.startsWith('Community Leader |') ? (
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 w-fit shadow-xs">
+                                      👑 Leader
+                                    </span>
+                                  ) : (
+                                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
+                                      p.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                      p.role === 'volunteer' ? 'bg-blue-100 text-blue-700' :
+                                      p.role === 'merchant' ? 'bg-green-100 text-green-700' : 'bg-red-105 text-red-700'
+                                    }`}>
+                                      {p.role === 'victim' ? 'Beneficiary' : p.role}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-1 w-fit ${
+                                    p.status === 'active' ? 'bg-green-100 text-green-700' :
+                                    p.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${
+                                      p.status === 'active' ? 'bg-green-500' :
+                                      p.status === 'pending' ? 'bg-amber-500' : 'bg-red-500'
+                                    }`} />
+                                    {p.county?.startsWith('Community Leader |') ? 'Vetted 🛡️' : (p.status === 'pending' ? 'Inactive' : p.status)}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {p.county?.startsWith('Community Leader |') ? (
+                                    (() => {
+                                      const parts = p.county.split('|');
+                                      const countyName = parts[1]?.trim() || 'N/A';
+                                      const wardName = parts[2]?.trim() || 'N/A';
+                                      const titleName = parts[3]?.trim() || 'N/A';
+                                      return (
+                                        <div className="space-y-1 text-xs">
+                                          <p className="font-extrabold text-slate-900">{countyName} County</p>
+                                          <p className="text-[10px] text-slate-500 font-bold flex items-center gap-1">
+                                            📍 <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md font-semibold">{wardName}</span>
+                                          </p>
+                                          <p className="text-[9px] text-amber-750 font-black uppercase tracking-wide">
+                                            🛡️ {titleName}
+                                          </p>
+                                        </div>
+                                      );
+                                    })()
+                                  ) : (
+                                    <div className="space-y-1.5">
+                                      <p className="text-sm font-bold text-slate-800">{parsed.county || 'N/A'}</p>
+                                      {hasExtraAttrs && (
+                                        <button 
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleUserExpand(p.id);
+                                          }}
+                                          className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all inline-flex items-center gap-1 cursor-pointer w-fit uppercase tracking-wider ${
+                                            isExpanded
+                                              ? 'bg-red-50 text-red-650 border-red-200 shadow-xs'
+                                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                                          }`}
+                                        >
+                                          {isExpanded ? '▲ Hide Dossier' : `▼ Dossier (${parsed.attributes.length} fields)`}
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 text-xs">
+                                  <p className="font-bold text-slate-600">{p.phone_number || 'No phone'}</p>
+                                  {p.county?.startsWith('Community Leader |') ? (
+                                    (() => {
+                                      const parts = p.county.split('|');
+                                      const livestock = parts[5]?.trim() || '';
+                                      if (!livestock) return null;
+                                      return (
+                                        <p className="text-[9px] text-emerald-700 font-black uppercase mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-md w-fit">
+                                          🌾 Assets: {livestock.slice(0, 30)}{livestock.length > 30 ? '...' : ''}
+                                        </p>
+                                      );
+                                    })()
+                                  ) : p.national_id ? (
+                                    <p className="text-[10px] text-slate-400">ID: {p.national_id}</p>
+                                  ) : null}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingProfile(p);
+                                        setEditProfileForm({
+                                          fullName: p.full_name || '',
+                                          email: p.email || '',
+                                          role: p.role,
+                                          county: p.county || '',
+                                          phone_number: p.phone_number || '',
+                                          status: p.status || 'active',
+                                          national_id: p.national_id || ''
+                                        });
+                                      }}
+                                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                      title="Edit User"
+                                    >
+                                      <Edit size={16} />
+                                    </button>
+                                    {p.id !== user?.id && (
+                                      <button
+                                        onClick={() => setDeleteProfileId(p.id)}
+                                        className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                        title="Delete User"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Multi-Dossier Expanded Info Panel for Corporate Representation */}
+                              {isExpanded && hasExtraAttrs && (
+                                <tr className="bg-slate-50/50 dark:bg-slate-900/10">
+                                  <td colSpan={6} className="px-6 py-5 border-t border-b border-slate-200/40">
+                                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-850 shadow-xs max-w-4xl space-y-4">
+                                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                        <div className="flex items-center gap-2">
+                                          <div className="p-1 px-2 text-[10px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-500/10 text-red-650 dark:text-red-400 rounded-md">
+                                            📋 Beneficiary Dossier
+                                          </div>
+                                          <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
+                                            Demographics & Assets Registry Record
+                                          </h4>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                                          Uniquely serialized via volunteer portal
+                                        </span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                        {parsed.attributes.map((attr, idx) => {
+                                          let icon = '⚙️';
+                                          const lbl = attr.label.toLowerCase();
+                                          if (lbl.includes('house') || lbl.includes('family') || lbl.includes('size') || lbl.includes('member')) icon = '👥';
+                                          else if (lbl.includes('livestock') || lbl.includes('animal') || lbl.includes('cow') || lbl.includes('goat') || lbl.includes('sheep')) icon = '🌾';
+                                          else if (lbl.includes('crop') || lbl.includes('farm') || lbl.includes('damage') || lbl.includes('yield') || lbl.includes('land')) icon = '🍂';
+                                          else if (lbl.includes('medical') || lbl.includes('health') || lbl.includes('disease') || lbl.includes('injury')) icon = '❤️‍🩹';
+                                          else if (lbl.includes('need') || lbl.includes('urgency') || lbl.includes('status') || lbl.includes('priority')) icon = '⚠️';
+                                          else if (lbl.includes('asset') || lbl.includes('property') || lbl.includes('valuation') || lbl.includes('financial')) icon = '💰';
+
+                                          return (
+                                            <div key={idx} className="p-3 bg-slate-50/70 dark:bg-slate-900/40 rounded-xl border border-slate-200/50 dark:border-slate-800/60 flex items-start gap-3">
+                                              <span className="text-xl leading-none mt-0.5">{icon}</span>
+                                              <div className="space-y-0.5 min-w-0">
+                                                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider truncate">{attr.label}</p>
+                                                <p className="text-sm text-slate-800 dark:text-slate-200 font-black">{attr.value || 'None Specified'}</p>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
                               )}
-                            </td>
-                            <td className="px-6 py-4 text-xs">
-                              <p className="font-bold text-slate-600">{p.phone_number || 'No phone'}</p>
-                              {p.county?.startsWith('Community Leader |') ? (
-                                (() => {
-                                  const parts = p.county.split('|');
-                                  const livestock = parts[5]?.trim() || '';
-                                  if (!livestock) return null;
-                                  return (
-                                    <p className="text-[9px] text-emerald-700 font-black uppercase mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-md w-fit">
-                                      🌾 Assets: {livestock.slice(0, 30)}{livestock.length > 30 ? '...' : ''}
-                                    </p>
-                                  );
-                                })()
-                              ) : p.national_id ? (
-                                <p className="text-[10px] text-slate-400">ID: {p.national_id}</p>
-                              ) : null}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => {
-                                    setEditingProfile(p);
-                                    setEditProfileForm({
-                                      fullName: p.full_name || '',
-                                      email: p.email || '',
-                                      role: p.role,
-                                      county: p.county || '',
-                                      phone_number: p.phone_number || '',
-                                      status: p.status || 'active',
-                                      national_id: p.national_id || ''
-                                    });
-                                  }}
-                                  className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                                  title="Edit User"
-                                >
-                                  <Edit size={16} />
-                                </button>
-                                {p.id !== user?.id && (
-                                  <button
-                                    onClick={() => setDeleteProfileId(p.id)}
-                                    className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                    title="Delete User"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1701,111 +1827,194 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
             </motion.div>
           )}
 
-          {activeTab === 'triage' && (
-            <motion.div 
-              key="triage"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-8"
-            >
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-bold">PFA Chatbot Triage</h3>
-                    <p className="text-sm text-slate-500 font-medium">Victims ranked by danger/risk level</p>
+          {activeTab === 'triage' && (() => {
+            const filteredTriageSessions = triageSessions.filter(session => {
+              if (triageStatusFilter === 'all') return true;
+              return session.status === triageStatusFilter;
+            });
+
+            const totalTriagePages = Math.ceil(filteredTriageSessions.length / triageItemsPerPage);
+            const indexLastTriage = triagePage * triageItemsPerPage;
+            const indexFirstTriage = indexLastTriage - triageItemsPerPage;
+            const currentTriageSessions = filteredTriageSessions.slice(indexFirstTriage, indexLastTriage);
+
+            return (
+              <motion.div 
+                key="triage"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-8"
+              >
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                      <h3 className="text-lg font-bold">PFA Chatbot Triage</h3>
+                      <p className="text-sm text-slate-500 font-medium">Victims ranked by danger/risk level</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Filter size={18} className="text-slate-400" />
+                      <select 
+                        value={triageStatusFilter}
+                        onChange={(e) => {
+                          setTriageStatusFilter(e.target.value as any);
+                          setTriagePage(1);
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-sm font-bold outline-none"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Filter size={18} className="text-slate-400" />
-                    <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-sm font-bold outline-none">
-                      <option>All Status</option>
-                      <option>Open</option>
-                      <option>In Progress</option>
-                      <option>Closed</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Victim</th>
-                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Risk Score</th>
-                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Last Message</th>
-                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Assignment</th>
-                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {triageSessions.map(session => {
-                        const victim = profiles.find(p => p.id === session.victim_id);
-                        const assignedVolunteer = volunteers.find(v => v.id === session.volunteer_id);
-                        
-                        return (
-                          <tr key={session.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4">
-                              <p className="font-bold text-slate-900">{victim?.full_name || 'Unknown Victim'}</p>
-                              <p className="text-xs text-slate-500">{victim?.phone_number || 'No contact'}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-24">
-                                  <div 
-                                    className={`h-full rounded-full ${
-                                      session.risk_score > 0.7 ? 'bg-red-500' : 
-                                      session.risk_score > 0.4 ? 'bg-orange-500' : 'bg-green-500'
-                                    }`}
-                                    style={{ width: `${session.risk_score * 100}%` }}
-                                  />
-                                </div>
-                                <span className={`text-xs font-black ${
-                                  session.risk_score > 0.7 ? 'text-red-600' : 
-                                  session.risk_score > 0.4 ? 'text-orange-600' : 'text-green-600'
-                                }`}>
-                                  {(session.risk_score * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <p className="text-sm text-slate-600 max-w-xs truncate italic">"{session.last_message}"</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              {session.volunteer_id ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Victim</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Risk Score</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Last Message</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Assignment</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {currentTriageSessions.map(session => {
+                          const victim = profiles.find(p => p.id === session.victim_id);
+                          const assignedVolunteer = volunteers.find(v => v.id === session.volunteer_id);
+                          
+                          return (
+                            <tr key={session.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-6 py-4">
+                                <p className="font-bold text-slate-900">{victim?.full_name || 'Unknown Victim'}</p>
+                                <p className="text-xs text-slate-500">{victim?.phone_number || 'No contact'}</p>
+                                {(() => {
+                                  const parsed = parseCountyAndAttributes(victim?.county || null);
+                                  if (parsed.attributes.length > 0) {
+                                    return (
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {parsed.attributes.map((attr, index) => {
+                                          const labelLc = attr.label.toLowerCase();
+                                          if (labelLc.includes('house') || labelLc.includes('live') || labelLc.includes('asset') || labelLc.includes('crop') || labelLc.includes('member') || labelLc.includes('animal')) {
+                                            const icon = labelLc.includes('house') || labelLc.includes('member') ? '👥' : '🌾';
+                                            return (
+                                              <span 
+                                                key={index} 
+                                                title={`${attr.label}: ${attr.value}`}
+                                                className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-slate-50 text-slate-600 border border-slate-200/60 px-2 py-0.5 rounded-md hover:bg-slate-100/80 transition-all cursor-help"
+                                              >
+                                                {icon} <span className="text-slate-400 font-bold uppercase">{attr.label.split(' ')[0]}</span> {attr.value}
+                                              </span>
+                                            );
+                                          }
+                                          return null;
+                                        })}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </td>
+                              <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600">
-                                    {assignedVolunteer?.full_name?.[0]}
+                                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-24">
+                                    <div 
+                                      className={`h-full rounded-full ${
+                                        session.risk_score > 0.7 ? 'bg-red-500' : 
+                                        session.risk_score > 0.4 ? 'bg-orange-500' : 'bg-green-500'
+                                      }`}
+                                      style={{ width: `${session.risk_score * 100}%` }}
+                                    />
                                   </div>
-                                  <span className="text-sm font-bold text-slate-700">{assignedVolunteer?.full_name}</span>
+                                  <span className={`text-xs font-black ${
+                                    session.risk_score > 0.7 ? 'text-red-600' : 
+                                    session.risk_score > 0.4 ? 'text-orange-600' : 'text-green-600'
+                                  }`}>
+                                    {(session.risk_score * 100).toFixed(0)}%
+                                  </span>
                                 </div>
-                              ) : (
-                                <select 
-                                  onChange={(e) => assignVolunteer(session.id, e.target.value)}
-                                  className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-red-500"
-                                >
-                                  <option value="">Assign Volunteer</option>
-                                  {volunteers.map(v => (
-                                    <option key={v.id} value={v.id}>{v.full_name}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                session.status === 'open' ? 'bg-red-100 text-red-700' :
-                                session.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                              }`}>
-                                {session.status.replace('_', ' ')}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="text-sm text-slate-600 max-w-xs truncate italic">"{session.last_message}"</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                {session.volunteer_id ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600">
+                                      {assignedVolunteer?.full_name?.[0]}
+                                    </div>
+                                    <span className="text-sm font-bold text-slate-700">{assignedVolunteer?.full_name}</span>
+                                  </div>
+                                ) : (
+                                  <select 
+                                    onChange={(e) => assignVolunteer(session.id, e.target.value)}
+                                    className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-red-500"
+                                  >
+                                    <option value="">Assign Volunteer</option>
+                                    {volunteers.map(v => (
+                                      <option key={v.id} value={v.id}>{v.full_name}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                  session.status === 'open' ? 'bg-red-100 text-red-700' :
+                                  session.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {session.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Controls for Triage Alert Radar */}
+                  {totalTriagePages > 1 && (
+                    <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                      <p className="text-sm font-medium text-slate-500">
+                        Showing <span className="text-slate-905 font-bold">{indexFirstTriage + 1}</span> to <span className="text-slate-905 font-bold">{Math.min(indexLastTriage, filteredTriageSessions.length)}</span> of <span className="text-slate-905 font-bold">{filteredTriageSessions.length}</span> triage alerts
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          disabled={triagePage === 1}
+                          onClick={() => setTriagePage(prev => prev - 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Previous
+                        </button>
+                        {[...Array(totalTriagePages)].map((_, i) => (
+                          <button
+                            key={i + 1}
+                            onClick={() => setTriagePage(i + 1)}
+                            className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                              triagePage === i + 1 
+                                ? 'bg-red-650 text-white shadow-md shadow-red-200' 
+                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                        <button 
+                          disabled={triagePage === totalTriagePages}
+                          onClick={() => setTriagePage(prev => prev + 1)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </motion.div>
-          )}
+              </motion.div>
+            );
+          })()}
           {activeTab === 'disbursements' && (
             <motion.div 
               key="disbursements"

@@ -7,11 +7,6 @@ import {
   History, LogOut, ArrowUpRight, HelpCircle, Activity, UserCheck, Menu, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI((import.meta as any).env.VITE_GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 interface Message {
   role: 'user' | 'bot';
@@ -115,43 +110,29 @@ export default function VictimChatbot() {
     setLoading(true);
 
     try {
-      // 1. Get AI Response and Risk Assessment
-      const prompt = `
-        You are a Psychological First Aid (PFA) chatbot. 
-        The user is a victim of a disaster.
-        User message: "${userMessage}"
-        
-        Current conversation history:
-        ${messages.map(m => `${m.role}: ${m.content}`).join('\n')}
+      // 1. Get AI Response and Risk Assessment from secure server API proxy
+      const response = await fetch('/api/victim-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userMsg: userMessage,
+          messages: messages
+        })
+      });
 
-        Task:
-        1. Provide a supportive, empathetic PFA response (Avoid dry or overly technical counselor jargon, speak naturally, with deep supportiveness and reassurance).
-        2. Assess the risk/danger level of the user (0.0 to 1.0). 
-           - 0.0: Calm, safe.
-           - 0.5: Distressed, needs attention.
-           - 1.0: Immediate danger, suicidal ideation, self-harm signals, or severe trauma.
-        
-        Return your response in JSON format only (no outside formatting, code block markers are allowed but return pure valid JSON):
-        {
-          "reply": "your empathetic response here",
-          "risk_score": 0.85,
-          "suicidal_detected": true
-        }
-        
-        If the user mentions wanting to die, suicide, ending their life, self-harm, or feeling that life is not worth living, set "suicidal_detected" to true and ensure risk_score is at least 0.95.
-      `;
+      const resData = await response.json();
+      if (!resData.success) {
+        throw new Error(resData.error || "The AI session could not be completed securely.");
+      }
 
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-      
-      // Extract JSON (Gemini sometimes wraps in markdown)
-      const jsonMatch = responseText.match(/\{.*\}/s);
-      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { reply: "I'm here for you. Tell me more.", risk_score: 0.1, suicidal_detected: false };
+      const rawText = resData.response;
+      const jsonMatch = rawText.match(/\{.*\}/s);
+      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { reply: rawText, risk_score: 0.1, suicidal_detected: false };
 
       const isSuicidal = data.suicidal_detected === true || data.risk_score >= 0.9 || /suicid|kill myself|end my life|want to die|self-harm|cut myself/i.test(userMessage);
 
       // If suicidal, override response to add emergency details/warmth.
-      let finalReply = data.reply;
+      let finalReply = data.reply || rawText;
       if (isSuicidal) {
         finalReply += "\n\n💚 Please know that you are not alone. Please reach out to the Red Cross Crisis Response team or call the toll-free emergency support line at 0800-723-253 or the suicide preventative helpline immediately. We are dispatching immediate help coordinates.";
       }
@@ -180,9 +161,9 @@ export default function VictimChatbot() {
         fetchUserData();
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, { role: 'bot', content: "I'm having a little trouble connecting, but I'm still here for you. Please take a deep breath." }]);
+      setMessages(prev => [...prev, { role: 'bot', content: `I'm having a little trouble connecting: ${error.message || "Please take a deep breath."}` }]);
     } finally {
       setLoading(false);
     }

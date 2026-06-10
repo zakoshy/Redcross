@@ -353,4 +353,59 @@ app.post("/api/pfa-chat", async (req, res) => {
   }
 });
 
+// Secure server-side endpoint for the Beneficiary/Victim chat bot
+app.post("/api/victim-chat", async (req, res) => {
+  try {
+    const { userMsg, messages } = req.body;
+    if (!userMsg) {
+      return res.status(400).json({ error: "Missing required parameter: userMsg" });
+    }
+
+    const ai = getGenAI();
+    const formattedHistory = Array.isArray(messages) ? messages : [];
+
+    const prompt = `
+      You are a Psychological First Aid (PFA) chatbot. 
+      The user is a beneficiary affected by a disaster.
+      User message: "${userMsg}"
+      
+      Current conversation history:
+      ${formattedHistory.map((m: any) => `${m.role === 'user' ? 'user' : 'model'}: ${m.content || m.text || ''}`).join('\n')}
+
+      Task:
+      1. Provide a supportive, empathetic PFA response (Avoid dry or overly technical counselor jargon, speak naturally, with deep supportiveness and reassurance).
+      2. Assess the risk/danger level of the user (0.0 to 1.0). 
+         - 0.0: Calm, safe.
+         - 0.5: Distressed, needs attention.
+         - 1.0: Immediate danger, suicidal ideation, self-harm signals, or severe trauma.
+      
+      Return your response in JSON format only (no outside formatting, code block markers are allowed but return pure valid JSON):
+      {
+        "reply": "your empathetic response here",
+        "risk_score": 0.85,
+        "suicidal_detected": true
+      }
+      
+      If the user mentions wanting to die, suicide, ending their life, self-harm, or feeling that life is not worth living, set "suicidal_detected" to true and ensure risk_score is at least 0.95.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const replyText = response.text || "{}";
+    res.json({ success: true, response: replyText });
+  } catch (error: any) {
+    console.error("[Gemini API Error] Victim Chat Bot failed:", error);
+    res.json({
+      success: false,
+      error: error.message || "An error occurred while connecting to the AI network."
+    });
+  }
+});
+
 export { app };
