@@ -30,6 +30,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
 
   const [rateLimitExceeded, setRateLimitExceeded] = useState(false);
   const [remainingTimeStr, setRemainingTimeStr] = useState('');
+  const [remainingChats, setRemainingChats] = useState(10);
 
   // Function to check and update rate limit
   const checkRateLimit = () => {
@@ -49,6 +50,9 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
     // Filter out timestamps older than 24 hours
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     const activeTimestamps = timestamps.filter(t => t > oneDayAgo);
+    
+    const countRemaining = Math.max(0, 10 - activeTimestamps.length);
+    setRemainingChats(countRemaining);
 
     if (activeTimestamps.length >= 10) {
       setRateLimitExceeded(true);
@@ -243,13 +247,15 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
         : "I'm always here to support you. Please take a deep breath.";
       let score = 0.2;
       let status = "normal";
+      let category = "General Support";
 
       if (match) {
         try {
           const parsed = JSON.parse(match[0]);
           replyText = parsed.reply;
-          score = parsed.risk_score_0_to_1 || score;
-          status = parsed.suicidal_assessment || status;
+          score = parsed.risk_score_0_to_1 ?? score;
+          status = parsed.suicidal_assessment ?? status;
+          category = parsed.category ?? category;
         } catch (e) {
           console.error("JSON parsing failed, falling back to raw output", e);
           replyText = text.replace(/```json|```/g, "").trim();
@@ -258,13 +264,37 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
         replyText = text.trim();
       }
 
-      setMessages(prev => [...prev, { role: 'bot', content: replyText }]);
+      const updatedHistory: Message[] = [...messages, { role: 'user', content: userMsg }, { role: 'bot', content: replyText }];
+      setMessages(updatedHistory);
+
+      // Construct a structured serialized log for admin categorization and visualization
+      const structuredPayload = {
+        category,
+        userRole: profile?.role || 'volunteer',
+        userName: profile?.full_name || 'Anonymous Responders',
+        userCounty: parseCounty(profile?.county),
+        history: updatedHistory
+      };
+      const structuredNotes = `[STRUCTURED_PFA_LOG]:${JSON.stringify(structuredPayload)}`;
+
+      // Automatically sync interaction to DB for all user roles
+      if (user) {
+        const isProblem = status === 'suicidal' || score >= 0.4 || status === 'distressed';
+        await supabase.from('triage_sessions').upsert({
+          victim_id: user.id,
+          last_message: userMsg,
+          risk_score: score,
+          status: isProblem ? 'open' : 'closed',
+          escalated: status === 'suicidal' || score >= 0.8,
+          notes: structuredNotes
+        }, { onConflict: 'victim_id' });
+      }
 
       // Trigger critical suicidal peer matching workflow
       if (status === 'suicidal' || score >= 0.8) {
         setRiskAssessment('suicidal');
-        await triggerEmergencyPeerCoordination(userMsg, score);
-      } else if (status === 'distressed' || score > 0.5) {
+        await triggerEmergencyPeerCoordination(userMsg, score, structuredNotes);
+      } else if (status === 'distressed' || score > 0.4) {
         setRiskAssessment('distressed');
       }
 
@@ -282,7 +312,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
     }
   };
 
-  const triggerEmergencyPeerCoordination = async (lastUserMsg: string, score: number) => {
+  const triggerEmergencyPeerCoordination = async (lastUserMsg: string, score: number, structuredNotes?: string) => {
     try {
       const userCounty = parseCounty(profile?.county);
 
@@ -307,6 +337,18 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
         const chosenPeer = matchingPeers[0];
         setEscalatedPeer(chosenPeer);
 
+        const escMsg = `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress (Suicidal Safety Warning). Commenced instant coordinate protocol matching with local county member: ${chosenPeer.full_name}. Contact: ${chosenPeer.phone_number || 'N/A'}`;
+        let finalNotes = escMsg;
+        if (structuredNotes && structuredNotes.startsWith('[STRUCTURED_PFA_LOG]:')) {
+          try {
+            const parsed = JSON.parse(structuredNotes.replace('[STRUCTURED_PFA_LOG]:', ''));
+            parsed.peerEscalated = escMsg;
+            finalNotes = `[STRUCTURED_PFA_LOG]:${JSON.stringify(parsed)}`;
+          } catch (e) {
+            finalNotes = structuredNotes + "\n" + escMsg;
+          }
+        }
+
         await supabase.from('triage_sessions').upsert({
           victim_id: user?.id, // Staff member in distress
           volunteer_id: chosenPeer.id, // assigned teammate
@@ -314,7 +356,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
           risk_score: score,
           status: 'open',
           escalated: true,
-          notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress (Suicidal Safety Warning). Commenced instant coordinate protocol matching with local county member: ${chosenPeer.full_name}. Contact: ${chosenPeer.phone_number || 'N/A'}`
+          notes: finalNotes
         }, { onConflict: 'victim_id' });
 
       } else {
@@ -331,6 +373,18 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
           const chosenPeer = neighboringPeers[0];
           setEscalatedPeer(chosenPeer);
 
+          const escMsg = `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No local responders inside ${userCounty}, matched fallback nearby county responder: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`;
+          let finalNotes = escMsg;
+          if (structuredNotes && structuredNotes.startsWith('[STRUCTURED_PFA_LOG]:')) {
+            try {
+              const parsed = JSON.parse(structuredNotes.replace('[STRUCTURED_PFA_LOG]:', ''));
+              parsed.peerEscalated = escMsg;
+              finalNotes = `[STRUCTURED_PFA_LOG]:${JSON.stringify(parsed)}`;
+            } catch (e) {
+              finalNotes = structuredNotes + "\n" + escMsg;
+            }
+          }
+
           await supabase.from('triage_sessions').upsert({
             victim_id: user?.id,
             volunteer_id: chosenPeer.id,
@@ -338,7 +392,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
             risk_score: score,
             status: 'open',
             escalated: true,
-            notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No local responders inside ${userCounty}, matched fallback nearby county responder: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`
+            notes: finalNotes
           }, { onConflict: 'victim_id' });
 
         } else {
@@ -352,6 +406,18 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
             const chosenPeer = globalPeers[0];
             setEscalatedPeer(chosenPeer);
 
+            const escMsg = `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. Deployed general backup counselor: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`;
+            let finalNotes = escMsg;
+            if (structuredNotes && structuredNotes.startsWith('[STRUCTURED_PFA_LOG]:')) {
+              try {
+                const parsed = JSON.parse(structuredNotes.replace('[STRUCTURED_PFA_LOG]:', ''));
+                parsed.peerEscalated = escMsg;
+                finalNotes = `[STRUCTURED_PFA_LOG]:${JSON.stringify(parsed)}`;
+              } catch (e) {
+                finalNotes = structuredNotes + "\n" + escMsg;
+              }
+            }
+
             await supabase.from('triage_sessions').upsert({
               victim_id: user?.id,
               volunteer_id: chosenPeer.id,
@@ -359,7 +425,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
               risk_score: score,
               status: 'open',
               escalated: true,
-              notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. Deployed general backup counselor: ${chosenPeer.full_name} (${parseCounty(chosenPeer.county)} County). Contact: ${chosenPeer.phone_number || 'N/A'}`
+              notes: finalNotes
             }, { onConflict: 'victim_id' });
 
           } else {
@@ -370,6 +436,18 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
               role: "Crisis Coordinator"
             });
 
+            const escMsg = `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No registered rescue colleagues found anywhere. Upgraded alert directly to Administration Crisis Support Line.`;
+            let finalNotes = escMsg;
+            if (structuredNotes && structuredNotes.startsWith('[STRUCTURED_PFA_LOG]:')) {
+              try {
+                const parsed = JSON.parse(structuredNotes.replace('[STRUCTURED_PFA_LOG]:', ''));
+                parsed.peerEscalated = escMsg;
+                finalNotes = `[STRUCTURED_PFA_LOG]:${JSON.stringify(parsed)}`;
+              } catch (e) {
+                finalNotes = structuredNotes + "\n" + escMsg;
+              }
+            }
+
             await supabase.from('triage_sessions').upsert({
               victim_id: user?.id,
               volunteer_id: null,
@@ -377,7 +455,7 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
               risk_score: score,
               status: 'open',
               escalated: true,
-              notes: `[ALERT_SUICIDAL] [CRITICAL TEAM DISTRESS ALERT] Our staff teammate ${profile?.full_name || 'Responder'} (${profile?.role}) is undergoing severe distress. No registered rescue colleagues found anywhere. Upgraded alert directly to Administration Crisis Support Line.`
+              notes: finalNotes
             }, { onConflict: 'victim_id' });
           }
         }
@@ -528,6 +606,16 @@ export default function PFABuddyChat({ isDark = false }: PFABuddyChatProps) {
                 </span>
               </div>
             )}
+
+            {/* Chats Remaining Bar Indicator */}
+            <div className={`px-4 py-1.5 border-t text-[10px] font-black flex items-center justify-between ${
+              isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-500'
+            }`}>
+              <span>Daily Rate Limiting:</span>
+              <span className={remainingChats <= 2 ? 'text-red-500 font-extrabold animate-pulse animate-duration-1000' : 'text-green-500'}>
+                {remainingChats} chats remaining
+              </span>
+            </div>
 
             {/* Input Submission Footer */}
             <form onSubmit={handleSend} className={`p-3 border-t flex gap-2 items-center ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>

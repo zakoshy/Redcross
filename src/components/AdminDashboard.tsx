@@ -8,7 +8,7 @@ import { KENYAN_COUNTIES } from '../constants';
 import { 
   Shield, UserPlus, Users, Store, LogOut, PlusCircle, Megaphone, 
   Send, CheckCircle2, Wallet, LayoutDashboard, MessageSquareWarning, 
-  TrendingUp, Activity, AlertTriangle, UserCheck, Search, Filter,
+  TrendingUp, Activity, AlertTriangle, ShieldAlert, UserCheck, Search, Filter,
   Eye, EyeOff, Trash2, Edit, Save, X, Phone as PhoneIcon, Sliders, Info, Server, Sun, Moon, Sparkles,
   ChevronLeft, ChevronRight, Menu
 } from 'lucide-react';
@@ -287,6 +287,8 @@ export default function AdminDashboard() {
   const [triagePage, setTriagePage] = useState(1);
   const triageItemsPerPage = 10;
   const [triageStatusFilter, setTriageStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'closed'>('all');
+  const [triageCategoryFilter, setTriageCategoryFilter] = useState<string>('all');
+  const [selectedTriageSession, setSelectedTriageSession] = useState<any | null>(null);
 
   // Triggerable AI Disaster Analysis State
   const [aiAnalyticalInsight, setAiAnalyticalInsight] = useState<string | null>(null);
@@ -1926,8 +1928,10 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                 </form>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {campaigns.map(c => (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Active Campaigns Column List (2/3 width) */}
+                <div className="lg:col-span-2 space-y-6">
+                  {campaigns.map(c => (
                   <div key={c.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-red-200 transition-all group">
                     <div className="p-6 border-b border-slate-100 flex justify-between items-start">
                       <div className="flex-1">
@@ -2011,20 +2015,148 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                     </div>
                   </div>
                 ))}
+                </div>
+
+                {/* Real-time County Relief Distribution Graph (1/3 width) */}
+                <div className="lg:col-span-1 space-y-6">
+                  {(() => {
+                    const reliefAndDisbursements = KENYAN_COUNTIES.map(countyName => {
+                      const liveAmount = ledger
+                        .filter(l => l.transaction_type === 'AID_DISBURSEMENT')
+                        .filter(l => {
+                          const matchProf = profiles.find(p => p.id === l.profile_id);
+                          if (!matchProf) return false;
+                          let profCounty = matchProf.county || '';
+                          if (profCounty.startsWith('Community Leader |')) {
+                            profCounty = profCounty.split('|')[1]?.trim() || '';
+                          }
+                          return profCounty.toLowerCase() === countyName.toLowerCase();
+                        })
+                        .reduce((sum, l) => sum + Math.abs(Number(l.amount)), 0);
+
+                      return {
+                        county: countyName,
+                        amount: liveAmount
+                      };
+                    }).sort((a, b) => b.amount - a.amount);
+
+                    const activeReliefCounties = reliefAndDisbursements.filter(item => item.amount > 0);
+
+                    return (
+                      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <div className="mb-4">
+                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                            📊 County Relief Graph
+                          </h3>
+                          <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                            Total campaign payouts and reliefs received by each county (KES).
+                          </p>
+                        </div>
+                        {activeReliefCounties.length === 0 ? (
+                          <div className="h-[280px] border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-slate-50">
+                            <p className="text-xs font-black text-slate-400">No Disbursements Map Data</p>
+                            <p className="text-[11px] text-slate-450 mt-1 pb-4 leading-relaxed max-w-[200px]">Disburse any campaign with a target county to see real-time county relief analytics populate here.</p>
+                          </div>
+                        ) : (
+                          <div className="h-[345px] w-full pt-2">
+                            <RobustChartWrapper>
+                              {(width, height) => (
+                                <BarChart 
+                                  layout="vertical"
+                                  width={width} 
+                                  height={height} 
+                                  data={activeReliefCounties.slice(0, 7)} 
+                                  margin={{ top: 10, right: 15, left: 15, bottom: 5 }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} strokeWidth={1} />
+                                  <XAxis type="number" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                                  <YAxis type="category" dataKey="county" stroke="#475569" fontSize={9} width={65} tickLine={false} />
+                                  <Tooltip 
+                                    cursor={{ fill: 'rgba(239, 68, 68, 0.03)' }}
+                                    formatter={(value: any) => [`KES ${Number(value).toLocaleString()}`, 'Total Reliefs']}
+                                  />
+                                  <Bar dataKey="amount" fill="#ef4444" radius={[0, 4, 4, 0]} name="Relief Amount" />
+                                </BarChart>
+                              )}
+                            </RobustChartWrapper>
+                          </div>
+                        )}
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] font-black text-slate-500">
+                          <span>Total Counties:</span>
+                          <span className="text-slate-800">{activeReliefCounties.length} / {KENYAN_COUNTIES.length} active</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </motion.div>
           )}
 
           {activeTab === 'triage' && (() => {
+            const parseStructuredNotes = (notes: string | null) => {
+              if (!notes) return { category: 'General Support', userRole: 'victim', userName: 'Anonymous Beneficiary', userCounty: 'N/A', history: [] };
+              if (notes.startsWith('[STRUCTURED_PFA_LOG]:')) {
+                try {
+                  return JSON.parse(notes.substring('[STRUCTURED_PFA_LOG]:'.length));
+                } catch (e) {
+                  console.error("Failed to parse structured notes, falling back", e);
+                }
+              }
+              let cat = 'General Support';
+              if (notes.includes('Severe Crisis') || notes.includes('ALERT_SUICIDAL') || notes.includes('suicidal')) cat = 'Severe Crisis';
+              else if (notes.includes('distressed') || notes.includes('Anxiety')) cat = 'High Anxiety';
+              return {
+                category: cat,
+                userRole: 'victim',
+                userName: 'Anonymous Beneficiary',
+                userCounty: 'N/A',
+                history: [{ role: 'user', content: notes }]
+              };
+            };
+
+            const dynamicCategories = ['all'];
+            triageSessions.forEach(session => {
+              const info = parseStructuredNotes(session.notes);
+              if (info?.category && !dynamicCategories.includes(info.category)) {
+                dynamicCategories.push(info.category);
+              }
+            });
+
             const filteredTriageSessions = triageSessions.filter(session => {
-              if (triageStatusFilter === 'all') return true;
-              return session.status === triageStatusFilter;
+              const statusMatch = triageStatusFilter === 'all' || session.status === triageStatusFilter;
+              if (!statusMatch) return false;
+              
+              if (triageCategoryFilter === 'all') return true;
+              const parsedObj = parseStructuredNotes(session.notes);
+              return parsedObj.category.toLowerCase() === triageCategoryFilter.toLowerCase();
             });
 
             const totalTriagePages = Math.ceil(filteredTriageSessions.length / triageItemsPerPage);
             const indexLastTriage = triagePage * triageItemsPerPage;
             const indexFirstTriage = indexLastTriage - triageItemsPerPage;
             const currentTriageSessions = filteredTriageSessions.slice(indexFirstTriage, indexLastTriage);
+
+            // Dynamic color tag generator for PFA distress categorizations
+            const getCategoryStyle = (cat: string) => {
+              const lower = cat.toLowerCase();
+              if (lower.includes('severe') || lower.includes('suicide') || lower.includes('crisis')) {
+                return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800/40';
+              }
+              if (lower.includes('anxiety') || lower.includes('panic') || lower.includes('fear')) {
+                return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-800/40';
+              }
+              if (lower.includes('burnout') || lower.includes('stress') || lower.includes('fatigue')) {
+                return 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-850/40';
+              }
+              if (lower.includes('grief') || lower.includes('loss') || lower.includes('disaster')) {
+                return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-800/40';
+              }
+              if (lower.includes('grounding') || lower.includes('exercise')) {
+                return 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/20 dark:text-teal-400 dark:border-teal-850/40';
+              }
+              return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800/40';
+            };
 
             return (
               <motion.div 
@@ -2035,129 +2167,162 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                 className="space-y-8"
               >
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                  <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                      <h3 className="text-lg font-bold">PFA Chatbot Triage</h3>
-                      <p className="text-sm text-slate-500 font-medium">Victims ranked by danger/risk level</p>
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        🛡️ PFA Chatbot Dialogue Triage & Interactions
+                      </h3>
+                      <p className="text-sm text-slate-500 font-medium">Categorized conversations under rate-limiting and human escalation systems</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Filter size={18} className="text-slate-400" />
-                      <select 
-                        value={triageStatusFilter}
-                        onChange={(e) => {
-                          setTriageStatusFilter(e.target.value as any);
-                          setTriagePage(1);
-                        }}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-sm font-bold outline-none"
-                      >
-                        <option value="all">All Status</option>
-                        <option value="open">Open</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="closed">Closed</option>
-                      </select>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Interaction category filter */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Category:</span>
+                        <select 
+                          value={triageCategoryFilter}
+                          onChange={(e) => {
+                            setTriageCategoryFilter(e.target.value);
+                            setTriagePage(1);
+                          }}
+                          className="bg-transparent text-xs font-black outline-none cursor-pointer max-w-[150px] truncate"
+                        >
+                          <option value="all">All Categories</option>
+                          {dynamicCategories.filter(c => c !== 'all').map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Status filter */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Status:</span>
+                        <select 
+                          value={triageStatusFilter}
+                          onChange={(e) => {
+                            setTriageStatusFilter(e.target.value as any);
+                            setTriagePage(1);
+                          }}
+                          className="bg-transparent text-xs font-black outline-none cursor-pointer"
+                        >
+                          <option value="all">All Status</option>
+                          <option value="open">Open</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="closed">Closed</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Victim</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">User/Personnel</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">AI Distress Category</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Risk Score</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Last Message</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Assignment</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Dialogue History</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {currentTriageSessions.map(session => {
-                          const victim = profiles.find(p => p.id === session.victim_id);
-                          const assignedVolunteer = volunteers.find(v => v.id === session.volunteer_id);
-                          
-                          return (
-                            <tr key={session.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-6 py-4">
-                                <p className="font-bold text-slate-900">{victim?.full_name || 'Unknown Victim'}</p>
-                                <p className="text-xs text-slate-500">{victim?.phone_number || 'No contact'}</p>
-                                {(() => {
-                                  const parsed = parseCountyAndAttributes(victim?.county || null);
-                                  if (parsed.attributes.length > 0) {
-                                    return (
-                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {parsed.attributes.map((attr, index) => {
-                                          const labelLc = attr.label.toLowerCase();
-                                          if (labelLc.includes('house') || labelLc.includes('live') || labelLc.includes('asset') || labelLc.includes('crop') || labelLc.includes('member') || labelLc.includes('animal')) {
-                                            const icon = labelLc.includes('house') || labelLc.includes('member') ? '👥' : '🌾';
-                                            return (
-                                              <span 
-                                                key={index} 
-                                                title={`${attr.label}: ${attr.value}`}
-                                                className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-slate-50 text-slate-600 border border-slate-200/60 px-2 py-0.5 rounded-md hover:bg-slate-100/80 transition-all cursor-help"
-                                              >
-                                                {icon} <span className="text-slate-400 font-bold uppercase">{attr.label.split(' ')[0]}</span> {attr.value}
-                                              </span>
-                                            );
-                                          }
-                                          return null;
-                                        })}
-                                      </div>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-24">
-                                    <div 
-                                      className={`h-full rounded-full ${
-                                        session.risk_score > 0.7 ? 'bg-red-500' : 
-                                        session.risk_score > 0.4 ? 'bg-orange-500' : 'bg-green-500'
-                                      }`}
-                                      style={{ width: `${session.risk_score * 100}%` }}
-                                    />
+                        {currentTriageSessions.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-12 text-center text-slate-450 font-bold">
+                              No interaction logs matched the selected filters.
+                            </td>
+                          </tr>
+                        ) : (
+                          currentTriageSessions.map(session => {
+                            const victim = profiles.find(p => p.id === session.victim_id);
+                            const assignedVolunteer = volunteers.find(v => v.id === session.volunteer_id);
+                            const parsedInfo = parseStructuredNotes(session.notes);
+                            
+                            // Determine display names/roles resiliently regardless of positions
+                            const displayName = parsedInfo.userName !== 'Anonymous Beneficiary' ? parsedInfo.userName : (victim?.full_name || 'Anonymous User');
+                            const displayRole = parsedInfo.userRole !== 'victim' ? parsedInfo.userRole : (victim?.role || 'beneficiary');
+                            const displayLocation = parsedInfo.userCounty !== 'N/A' ? parsedInfo.userCounty : (victim?.county ? parseCountyAndAttributes(victim.county).county : 'Unknown County');
+
+                            return (
+                              <tr key={session.id} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="px-6 py-4">
+                                  <p className="font-bold text-slate-900">{displayName}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md">
+                                      {displayRole}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-bold">
+                                      📍 {displayLocation}
+                                    </span>
                                   </div>
-                                  <span className={`text-xs font-black ${
-                                    session.risk_score > 0.7 ? 'text-red-600' : 
-                                    session.risk_score > 0.4 ? 'text-orange-600' : 'text-green-600'
-                                  }`}>
-                                    {(session.risk_score * 100).toFixed(0)}%
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-1 rounded-lg text-xs font-black border transition-all ${getCategoryStyle(parsedInfo.category)}`}>
+                                    {parsedInfo.category}
                                   </span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <p className="text-sm text-slate-600 max-w-xs truncate italic">"{session.last_message}"</p>
-                              </td>
-                              <td className="px-6 py-4">
-                                {session.volunteer_id ? (
+                                </td>
+                                <td className="px-6 py-4">
                                   <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600">
-                                      {assignedVolunteer?.full_name?.[0]}
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-20">
+                                      <div 
+                                        className={`h-full rounded-full ${
+                                          session.risk_score > 0.7 ? 'bg-red-500' : 
+                                          session.risk_score > 0.4 ? 'bg-orange-500' : 'bg-green-500'
+                                        }`}
+                                        style={{ width: `${session.risk_score * 100}%` }}
+                                      />
                                     </div>
-                                    <span className="text-sm font-bold text-slate-700">{assignedVolunteer?.full_name}</span>
+                                    <span className={`text-xs font-black ${
+                                      session.risk_score > 0.7 ? 'text-red-600' : 
+                                      session.risk_score > 0.4 ? 'text-orange-600' : 'text-green-600'
+                                    }`}>
+                                      {(session.risk_score * 100).toFixed(0)}%
+                                    </span>
                                   </div>
-                                ) : (
-                                  <select 
-                                    onChange={(e) => assignVolunteer(session.id, e.target.value)}
-                                    className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-red-500"
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-xs text-slate-650 max-w-xs truncate italic">"{session.last_message || 'No direct chat recorded'}"</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {session.volunteer_id ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600">
+                                        {assignedVolunteer?.full_name?.[0]}
+                                      </div>
+                                      <span className="text-sm font-bold text-slate-700">{assignedVolunteer?.full_name}</span>
+                                    </div>
+                                  ) : (
+                                    <select 
+                                      onChange={(e) => assignVolunteer(session.id, e.target.value)}
+                                      className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-red-500"
+                                    >
+                                      <option value="">Assign Volunteer</option>
+                                      {volunteers.map(v => (
+                                        <option key={v.id} value={v.id}>{v.full_name}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                    session.status === 'open' ? 'bg-red-100 text-red-700' :
+                                    session.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                                  }`}>
+                                    {session.status.replace('_', ' ')}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <button
+                                    onClick={() => setSelectedTriageSession(session)}
+                                    className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-black transition-all inline-flex items-center gap-1 cursor-pointer"
                                   >
-                                    <option value="">Assign Volunteer</option>
-                                    {volunteers.map(v => (
-                                      <option key={v.id} value={v.id}>{v.full_name}</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                  session.status === 'open' ? 'bg-red-100 text-red-700' :
-                                  session.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                                }`}>
-                                  {session.status.replace('_', ' ')}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                                    🔍 Review Chat
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -2200,6 +2365,93 @@ Use standard, structured HTML tags (h4, ul, li, strong, div), with elegant styli
                     </div>
                   )}
                 </div>
+
+                {/* Dialog view of transcripts for reviewing interactions */}
+                {selectedTriageSession && (() => {
+                  const info = parseStructuredNotes(selectedTriageSession.notes);
+                  const victim = profiles.find(p => p.id === selectedTriageSession.victim_id);
+                  const vName = info.userName !== 'Anonymous Beneficiary' ? info.userName : (victim?.full_name || 'Anonymous User');
+                  const vRole = info.userRole !== 'victim' ? info.userRole : (victim?.role || 'beneficiary');
+                  const vCounty = info.userCounty !== 'N/A' ? info.userCounty : (victim?.county ? parseCountyAndAttributes(victim.county).county : 'Unknown Location');
+
+                  return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
+                      <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col h-[580px] border border-slate-150"
+                      >
+                        {/* Header details */}
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-black border uppercase ${getCategoryStyle(info.category)}`}>
+                                {info.category}
+                              </span>
+                              <span className="text-[10px] font-black uppercase bg-slate-900 text-white px-2 py-0.5 rounded-md">
+                                {vRole}
+                              </span>
+                            </div>
+                            <h4 className="text-base font-black text-slate-900 mt-2">
+                              Dialogue with {vName}
+                            </h4>
+                            <p className="text-xs text-slate-500 font-bold mt-0.5">
+                              📍 {vCounty} • Risk Assessment Score: {(selectedTriageSession.risk_score * 100).toFixed(0)}%
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => setSelectedTriageSession(null)}
+                            className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-150 rounded-full transition-all cursor-pointer"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+
+                        {/* Interactive transcript dialogue bubbles */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/40">
+                          {info.history && info.history.length > 0 ? (
+                            info.history.map((msg: any, idx: number) => {
+                              const isUser = msg.role === 'user';
+                              return (
+                                <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                  <div className="max-w-[85%] space-y-1">
+                                    <p className={`text-[9.5px] font-black uppercase tracking-wider ${isUser ? 'text-right text-slate-400' : 'text-left text-red-650'}`}>
+                                      {isUser ? `User (${vRole})` : 'Humanitarian PFA Counselor'}
+                                    </p>
+                                    <div className={`px-4 py-3 rounded-2xl text-xs leading-relaxed ${
+                                      isUser 
+                                        ? 'bg-slate-900 text-white rounded-tr-none shadow-sm font-semibold' 
+                                        : 'bg-white border border-slate-150 text-slate-800 rounded-tl-none shadow-xs font-medium'
+                                    }`}>
+                                      {msg.content}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-6">
+                              <ShieldAlert size={40} className="text-slate-350" />
+                              <p className="text-xs font-black text-slate-450 mt-3 uppercase tracking-wider">No Transcript History Logged</p>
+                              <p className="text-xs text-slate-500 mt-2 italic max-w-sm">" {selectedTriageSession.last_message} "</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Footer details */}
+                        <div className="p-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 text-[10px] font-bold text-slate-400">
+                          <span>Session ID: {selectedTriageSession.id}</span>
+                          <button 
+                            onClick={() => setSelectedTriageSession(null)}
+                            className="bg-slate-900 hover:bg-black text-white px-5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer"
+                          >
+                            Done Review
+                          </button>
+                        </div>
+                      </motion.div>
+                    </div>
+                  );
+                })()}
               </motion.div>
             );
           })()}
