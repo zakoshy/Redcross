@@ -1,10 +1,12 @@
+"use client";
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Shield, Heart, Activity, ArrowRight } from 'lucide-react';
 
 export default function LandingPage() {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   return (
     <div className="relative min-h-screen w-full flex flex-col justify-between overflow-x-hidden font-sans bg-slate-950 text-white">
@@ -77,7 +79,7 @@ export default function LandingPage() {
           className="flex justify-center mb-16 md:mb-20"
         >
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => router.push('/login')}
             className="group relative px-10 py-4 bg-red-600 hover:bg-red-700 text-white rounded-full font-bold text-base md:text-lg transition-all shadow-2xl hover:shadow-red-500/30 flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5"
           >
             Access Portal

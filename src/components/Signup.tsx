@@ -1,11 +1,13 @@
+"use client";
+
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Activity, Loader2, ArrowLeft, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Signup() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { loginAsMock } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -162,7 +164,7 @@ export default function Signup() {
 
       // Log in in active browser session
       loginAsMock(mockUser, mockProfile);
-      navigate('/volunteer-dashboard');
+      router.push('/volunteer');
     } catch (err: any) {
       setError(err.message || 'Error processing instant local bypass onboarding.');
     } finally {
@@ -194,7 +196,7 @@ export default function Signup() {
             {roleType === 'community_leader' ? 'Once verified, your Google Form responses will be routed to the Admin team for leadership verification.' : 'Please verify your email to activate your account.'}
           </p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => router.push('/login')}
             className="w-full bg-red-650 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-red-600/20"
           >
             Go to Login
@@ -213,7 +215,7 @@ export default function Signup() {
         
         <div className="p-8">
           <button 
-            onClick={() => navigate('/login')}
+            onClick={() => router.push('/login')}
             className={`flex items-center gap-2 mb-6 transition-colors text-sm font-medium ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}
           >
             <ArrowLeft size={16} />
@@ -444,7 +446,7 @@ export default function Signup() {
           <div className="mt-8 text-center">
             <p className="text-sm text-slate-500">
               Already have an account?{' '}
-              <button onClick={() => navigate('/login')} className="text-red-500 font-black hover:underline">
+              <button onClick={() => router.push('/login')} className="text-red-500 font-black hover:underline">
                 Sign In
               </button>
             </p>

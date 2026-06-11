@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use standard Vite environment variables
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+// Use universal environment variables safe for both Next.js and Vite
+const supabaseUrl = (typeof process !== 'undefined' && process.env && process.env.VITE_SUPABASE_URL) || (typeof window !== 'undefined' && (import.meta as any)?.env?.VITE_SUPABASE_URL);
+const supabaseAnonKey = (typeof process !== 'undefined' && process.env && process.env.VITE_SUPABASE_ANON_KEY) || (typeof window !== 'undefined' && (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase credentials missing! Check .env or AI Studio Secrets.');

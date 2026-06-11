@@ -1,11 +1,13 @@
+"use client";
+
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Activity, Loader2, ArrowLeft, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Login() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { loginAsMock } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,7 +47,7 @@ export default function Login() {
         created_at: new Date().toISOString()
       };
       loginAsMock(mockUser, mockProfile);
-      navigate('/admin-dashboard');
+      router.push('/admin');
     } else if (role === 'volunteer') {
       const mockUser = { id: 'sb_volunteer', email: 'omar@volunteer.org', user_metadata: { full_name: 'Omar Hassan' } };
       const mockProfile = {
@@ -58,7 +60,7 @@ export default function Login() {
         created_at: new Date().toISOString()
       };
       loginAsMock(mockUser, mockProfile);
-      navigate('/volunteer-dashboard');
+      router.push('/volunteer');
     } else if (role === 'leader') {
       const mockUser = { id: 'sb_leader', email: 'chief@dadaab.org', user_metadata: { full_name: 'Chief Hassan Aden' } };
       const mockProfile = {
@@ -71,7 +73,7 @@ export default function Login() {
         created_at: new Date().toISOString()
       };
       loginAsMock(mockUser, mockProfile);
-      navigate('/volunteer-dashboard');
+      router.push('/volunteer');
     }
   };
 
@@ -79,7 +81,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border border-slate-100">
         <button 
-          onClick={() => navigate('/')}
+          onClick={() => router.push('/')}
           className="flex items-center gap-2 text-slate-500 hover:text-slate-800 mb-8 transition-colors text-sm font-medium"
         >
           <ArrowLeft size={16} />
@@ -146,7 +148,7 @@ export default function Login() {
         <div className="mt-6 pt-6 border-t border-slate-100 text-center space-y-4 font-sans">
           <p className="text-sm text-slate-500">
             Need an account?{' '}
-            <button onClick={() => navigate('/signup')} className="text-red-655 font-black hover:underline">
+            <button onClick={() => router.push('/signup')} className="text-red-655 font-black hover:underline">
               Sign Up
             </button>
           </p>
